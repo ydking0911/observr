@@ -1,10 +1,8 @@
 """Unit tests for the Transport layer."""
 
 import json
-import queue
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from unittest.mock import patch
 
 import pytest
 

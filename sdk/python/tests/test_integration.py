@@ -117,7 +117,6 @@ def test_fastapi_middleware_traces_request(collector):
     pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
 
-    import importlib
     import sys
 
     # Fresh import so the patched FastAPI.__init__ picks up our collector URL

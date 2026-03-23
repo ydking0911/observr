@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import secrets
 import time
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from observr._transport import Transport

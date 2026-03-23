@@ -14,7 +14,7 @@ import (
 	"github.com/your-org/observr/server/internal/storage"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var embeddedUI embed.FS
 
 var upgrader = websocket.Upgrader{
@@ -189,6 +189,10 @@ func (c *client) readPump() {
 func StaticHandler() http.Handler {
 	sub, err := fs.Sub(embeddedUI, "dist")
 	if err != nil {
+		return http.HandlerFunc(placeholderHandler)
+	}
+	// If dashboard hasn't been built yet (only .gitkeep present), show placeholder.
+	if _, err := sub.Open("index.html"); err != nil {
 		return http.HandlerFunc(placeholderHandler)
 	}
 	return http.FileServer(http.FS(sub))
