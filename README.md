@@ -128,37 +128,7 @@ observr.init(
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Your Application                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │            observr Python SDK                 │   │
-│  │  • HTTP middleware (Flask / FastAPI)          │   │
-│  │  • Log interceptor (stdlib logging patch)     │   │
-│  │  • Manual spans                               │   │
-│  └──────────────────┬───────────────────────────┘   │
-└─────────────────────│───────────────────────────────┘
-                       │ HTTP POST /events (JSON batch)
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│              observrd (Go binary, ~7MB)               │
-│  ┌──────────────┐  ┌────────────┐  ┌─────────────┐ │
-│  │  Collector   │  │  Storage   │  │  Dashboard  │ │
-│  │  POST/events │→ │  (SQLite   │→ │  WebSocket  │ │
-│  │              │  │   WAL)     │  │  + React    │ │
-│  └──────────────┘  └────────────┘  └─────────────┘ │
-│  ┌──────────────────────────────────────────────┐   │
-│  │         Query API + CLI subcommand            │   │
-│  │  GET /query?level=error&last=100&format=json  │   │
-│  │  observrd query --level error --format json   │   │
-│  └──────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    observrd CLI    Browser      AI Agent
-    (terminal)    Dashboard   (Claude/Cursor)
-```
+![observr architecture](docs/observrd_arch.svg)
 
 ### Event Schema
 
