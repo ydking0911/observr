@@ -1,0 +1,113 @@
+/* ── Design Tokens ─────────────────────────────────────────────────────── */
+:root {
+  /* Background layers */
+  --bg-base:        oklch(97.5% 0.005 250);   /* warm off-white */
+  --bg-surface:     oklch(99.2% 0.003 250);   /* card / panel */
+  --bg-subtle:      oklch(95.5% 0.007 250);   /* table row hover, inputs */
+  --bg-inverse:     oklch(18% 0.02 250);      /* dark headers */
+
+  /* Text */
+  --text-primary:   oklch(18% 0.02 250);
+  --text-secondary: oklch(45% 0.015 250);
+  --text-tertiary:  oklch(62% 0.012 250);
+  --text-inverse:   oklch(95% 0.005 250);
+
+  /* Accent — Toss blue */
+  --accent:         oklch(55% 0.18 250);
+  --accent-subtle:  oklch(94% 0.04 250);
+  --accent-hover:   oklch(50% 0.20 250);
+
+  /* Status */
+  --status-error:   oklch(52% 0.22 25);
+  --status-error-bg:oklch(97% 0.03 25);
+  --status-warn:    oklch(62% 0.18 70);
+  --status-warn-bg: oklch(97% 0.03 70);
+  --status-ok:      oklch(56% 0.16 145);
+  --status-ok-bg:   oklch(96% 0.03 145);
+  --status-info:    oklch(55% 0.10 250);
+
+  /* Border */
+  --border:         oklch(89% 0.01 250);
+  --border-strong:  oklch(78% 0.015 250);
+
+  /* Typography */
+  --font-sans:  "DM Sans", system-ui, sans-serif;
+  --font-mono:  "JetBrains Mono", "Fira Code", monospace;
+
+  /* Type scale (fluid) */
+  --text-xs:   clamp(0.69rem, 0.65rem + 0.2vw, 0.75rem);
+  --text-sm:   clamp(0.8rem,  0.75rem + 0.25vw, 0.875rem);
+  --text-base: clamp(0.9rem,  0.85rem + 0.25vw, 1rem);
+  --text-lg:   clamp(1rem,    0.95rem + 0.25vw, 1.125rem);
+  --text-xl:   clamp(1.15rem, 1.05rem + 0.5vw, 1.375rem);
+  --text-2xl:  clamp(1.5rem,  1.3rem + 1vw, 2rem);
+  --text-3xl:  clamp(2rem,    1.6rem + 2vw, 2.75rem);
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 3px oklch(18% 0.02 250 / 0.06), 0 1px 2px oklch(18% 0.02 250 / 0.04);
+  --shadow-md: 0 4px 12px oklch(18% 0.02 250 / 0.08), 0 2px 4px oklch(18% 0.02 250 / 0.05);
+
+  /* Motion */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 350ms;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  line-height: 1.6;
+  min-height: 100dvh;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* ── Utility ───────────────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ── Entrance animation ────────────────────────────────────────────────── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

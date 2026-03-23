@@ -1,0 +1,66 @@
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+*.whl
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Go ──────────────────────────────────────────────────────────────────
+server/bin/
+cli/bin/
+*.exe
+*.test
+*.out
+go.sum
+
+# ── Node / Vite ─────────────────────────────────────────────────────────
+node_modules/
+dashboard/dist/
+server/internal/dashboard/dist/*
+!server/internal/dashboard/dist/.gitkeep
+.pnp
+.pnp.js
+.yarn/
+*.tsbuildinfo
+
+# ── observr runtime data ────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+observr.db*
+
+# ── OS ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ──────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Misc ────────────────────────────────────────────────────────────────
+*.log
+tmp/
+.tmp/
+
+# ── claude ────────────────────────────────────────────────────────────────
+.agent/
+.agents/
+.claude/
