@@ -1,4 +1,4 @@
-module github.com/your-org/observr/server
+module github.com/ydking0911/observr/server
 
 go 1.22
 

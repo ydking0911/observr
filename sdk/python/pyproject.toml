@@ -36,9 +36,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/observr"
-Repository = "https://github.com/your-org/observr"
-Issues = "https://github.com/your-org/observr/issues"
+Homepage = "https://github.com/ydking0911/observr"
+Repository = "https://github.com/ydking0911/observr"
+Issues = "https://github.com/ydking0911/observr/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["observr"]

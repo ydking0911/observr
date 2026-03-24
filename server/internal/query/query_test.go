@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/your-org/observr/server/internal/query"
-	"github.com/your-org/observr/server/internal/storage"
+	"github.com/ydking0911/observr/server/internal/query"
+	"github.com/ydking0911/observr/server/internal/storage"
 )
 
 // mockStore satisfies the querier interface for testing.

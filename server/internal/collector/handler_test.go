@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/your-org/observr/server/internal/collector"
-	"github.com/your-org/observr/server/internal/storage"
+	"github.com/ydking0911/observr/server/internal/collector"
+	"github.com/ydking0911/observr/server/internal/storage"
 )
 
 type mockStore struct {

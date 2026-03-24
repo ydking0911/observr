@@ -29,24 +29,24 @@ Most observability tools are built for ops teams managing cloud infrastructure. 
 
 **macOS / Linux (recommended)**
 ```bash
-curl -sSL https://raw.githubusercontent.com/your-org/observr/main/scripts/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/ydking0911/observr/main/scripts/install.sh | sh
 observrd   # → http://localhost:7676 (opens automatically)
 ```
 
 **Homebrew**
 ```bash
-brew tap your-org/observr
+brew tap ydking0911/observr
 brew install observr
 ```
 
 **go install**
 ```bash
-go install github.com/your-org/observr/server/cmd/observrd@latest
+go install github.com/ydking0911/observr/server/cmd/observrd@latest
 ```
 
 **Build from source**
 ```bash
-git clone https://github.com/your-org/observr
+git clone https://github.com/ydking0911/observr
 cd observr && make build
 ./server/bin/observrd
 ```

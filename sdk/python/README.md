@@ -53,5 +53,5 @@ observr.init(
 
 ## Links
 
-- [GitHub](https://github.com/your-org/observr)
-- [Dashboard & collector](https://github.com/your-org/observr/tree/main/server)
+- [GitHub](https://github.com/ydking0911/observr)
+- [Dashboard & collector](https://github.com/ydking0911/observr/tree/main/server)

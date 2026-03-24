@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 # observr installer
-# Usage: curl -sSL https://raw.githubusercontent.com/your-org/observr/main/scripts/install.sh | sh
+# Usage: curl -sSL https://raw.githubusercontent.com/ydking0911/observr/main/scripts/install.sh | sh
 
 set -e
 
-REPO="your-org/observr"
+REPO="ydking0911/observr"
 BIN_NAME="observrd"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
