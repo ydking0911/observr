@@ -26,7 +26,6 @@ cli/bin/
 *.exe
 *.test
 *.out
-go.sum
 
 # ── Node / Vite ─────────────────────────────────────────────────────────
 node_modules/

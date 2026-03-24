@@ -27,18 +27,33 @@ Most observability tools are built for ops teams managing cloud infrastructure. 
 
 ### 1. Start the collector
 
+**macOS / Linux (recommended)**
+```bash
+curl -sSL https://raw.githubusercontent.com/your-org/observr/main/scripts/install.sh | sh
+observrd   # → http://localhost:7676 (opens automatically)
+```
+
+**Homebrew**
+```bash
+brew tap your-org/observr
+brew install observr
+```
+
+**go install**
+```bash
+go install github.com/your-org/observr/server/cmd/observrd@latest
+```
+
+**Build from source**
 ```bash
 git clone https://github.com/your-org/observr
-cd observr
-make build                  # builds Go binary + embeds dashboard
-./server/bin/observrd       # → http://localhost:7676 (opens automatically)
+cd observr && make build
+./server/bin/observrd
 ```
 
 ### 2. Install the Python SDK
 
 ```bash
-pip install -e sdk/python   # local
-# or once published:
 pip install observr
 ```
 
