@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -165,22 +167,22 @@ func runTail(args []string) {
 	format := fs.String("format", "pretty", "Output format: pretty | json")
 	_ = fs.Parse(args)
 
-	url := fmt.Sprintf("http://localhost:%d/tail", *port)
-	params := ""
+	q := url.Values{}
 	if *level != "" {
-		params += "&level=" + *level
+		q.Set("level", *level)
 	}
 	if *service != "" {
-		params += "&service=" + *service
+		q.Set("service", *service)
 	}
 	if *eventType != "" {
-		params += "&type=" + *eventType
+		q.Set("type", *eventType)
 	}
-	if params != "" {
-		url += "?" + params[1:]
+	tailURL := fmt.Sprintf("http://localhost:%d/tail", *port)
+	if len(q) > 0 {
+		tailURL += "?" + q.Encode()
 	}
 
-	fmt.Fprintf(os.Stderr, "observrd tail — connected to %s\n\n", url)
+	fmt.Fprintf(os.Stderr, "observrd tail — connected to %s\n\n", tailURL)
 
 	// Interrupt handler so the user can Ctrl-C cleanly
 	ctx, cancel := context.WithCancel(context.Background())
@@ -188,7 +190,7 @@ func runTail(args []string) {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	go func() { <-quit; cancel() }()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tailURL, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -202,11 +204,17 @@ func runTail(args []string) {
 	}
 	resp, err := sseClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not connect to observrd at %s\n", url)
+		fmt.Fprintf(os.Stderr, "could not connect to observrd at %s\n", tailURL)
 		fmt.Fprintf(os.Stderr, "make sure `observrd` is running (observrd --port %d)\n", *port)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		fmt.Fprintf(os.Stderr, "unexpected status %d from observrd: %s\n", resp.StatusCode, string(body))
+		os.Exit(1)
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
