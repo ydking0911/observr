@@ -19,6 +19,7 @@ func NewHandler(s store) http.Handler {
 		var body struct {
 			Events []rawEvent `json:"events"`
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return

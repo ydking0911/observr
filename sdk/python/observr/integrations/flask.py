@@ -47,7 +47,7 @@ def instrument_flask(transport: "Transport") -> None:
             "status_code": response.status_code,
             "duration_ms": round(duration_ms, 2),
             "attributes": {
-                "query_string": request.query_string.decode(),
+                "query_string": request.query_string.decode("utf-8", errors="replace"),
                 "remote_addr": request.remote_addr,
                 "user_agent": request.user_agent.string,
             },
@@ -69,15 +69,13 @@ def _patch_existing_apps(transport: "Transport") -> None:
 
 
 def _register_hooks(app, transport: "Transport") -> None:
-    import secrets
-    import time
-    from datetime import datetime, timezone
     from flask import g, request
 
     @app.before_request
     def before():
         g._observr_start = time.monotonic()
         g._observr_trace_id = secrets.token_hex(16)
+        g._observr_span_id = secrets.token_hex(8)
 
     @app.after_request
     def after(response):
@@ -85,13 +83,17 @@ def _register_hooks(app, transport: "Transport") -> None:
         transport.send({
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "type": "http_request",
-            "level": "error" if response.status_code >= 500 else "info",
+            "level": "error" if response.status_code >= 500 else "warn" if response.status_code >= 400 else "info",
             "trace_id": getattr(g, "_observr_trace_id", None),
+            "span_id": getattr(g, "_observr_span_id", None),
             "message": f"{request.method} {request.path}",
             "method": request.method,
             "path": request.path,
             "status_code": response.status_code,
             "duration_ms": round(duration_ms, 2),
-            "attributes": {},
+            "attributes": {
+                "query_string": request.query_string.decode("utf-8", errors="replace"),
+                "remote_addr": request.remote_addr,
+            },
         })
         return response

@@ -14,6 +14,15 @@ if TYPE_CHECKING:
     from observr._transport import Transport
 
 
+_STDLIB_ATTRS: frozenset[str] = frozenset({
+    "name", "msg", "args", "created", "filename", "funcName",
+    "levelname", "levelno", "lineno", "module", "msecs",
+    "message", "pathname", "process", "processName",
+    "relativeCreated", "stack_info", "thread", "threadName",
+    "exc_info", "exc_text",
+})
+
+
 class ObservrLogHandler(logging.Handler):
     """Forwards log records to the Transport as structured JSON events."""
 
@@ -47,13 +56,6 @@ class ObservrLogHandler(logging.Handler):
         }
 
         # Capture extra fields set by the caller
-        _STDLIB_ATTRS = {
-            "name", "msg", "args", "created", "filename", "funcName",
-            "levelname", "levelno", "lineno", "module", "msecs",
-            "message", "pathname", "process", "processName",
-            "relativeCreated", "stack_info", "thread", "threadName",
-            "exc_info", "exc_text",
-        }
         for key, value in record.__dict__.items():
             if key not in _STDLIB_ATTRS and not key.startswith("_"):
                 event["attributes"][key] = value

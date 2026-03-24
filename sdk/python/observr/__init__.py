@@ -32,6 +32,8 @@ def init(
         The active ObservrClient instance.
     """
     global _client
+    if _client is not None:
+        _client.shutdown()
     _client = ObservrClient(
         service=service,
         collector_url=collector_url,
