@@ -175,7 +175,7 @@ func TestSSEMultipleClients(t *testing.T) {
 			}
 		}(ch)
 	}
-	time.Sleep(60 * time.Millisecond) // wait for all subscribers to register
+	time.Sleep(50 * time.Millisecond) // wait for all subscribers to register
 
 	hub.Broadcast(storage.Event{
 		ID: "x", Service: "svc", Timestamp: time.Now(),
