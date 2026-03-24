@@ -40,7 +40,7 @@ func (h *Hub) Broadcast(event storage.Event) {
 
 // ServeHTTP implements the GET /tail SSE endpoint.
 //
-// Filters (all optional, comma-separated for multi-value):
+// Filters (all optional, exact-match):
 //
 //	?level=error
 //	?service=my-api
