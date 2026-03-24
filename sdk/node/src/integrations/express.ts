@@ -17,7 +17,7 @@ type Next = () => void;
 /**
  * Express middleware factory.
  * Usage:
- *   import { expressMiddleware } from "observr/express";
+ *   import { expressMiddleware } from "observr";
  *   app.use(expressMiddleware(transport));
  */
 export function expressMiddleware(transport: Transport) {
