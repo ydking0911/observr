@@ -1,6 +1,6 @@
 {
   "name": "observr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zero-config observability for AI agents and developers",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
