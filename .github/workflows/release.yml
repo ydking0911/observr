@@ -109,8 +109,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
-          EXT=""
-          [[ "${{ matrix.goos }}" == "windows" ]] && EXT=".exe"
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
             -o bin/${{ matrix.asset_name }} \
             ./cmd/observrd
