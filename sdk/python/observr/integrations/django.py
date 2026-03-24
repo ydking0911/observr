@@ -31,17 +31,24 @@ def instrument_django(transport: "Transport") -> None:
     except ImportError:
         return
 
-    original_load = base_handler.BaseHandler.load_middleware
+    existing = base_handler.BaseHandler.load_middleware
+    if getattr(existing, "_observr_patched", False):
+        return  # already patched — avoid double-wrapping on re-init
+
+    original_load = existing
 
     def _patched_load(self, *args, **kwargs):
         original_load(self, *args, **kwargs)
         _prepend_middleware(self, transport)
 
+    _patched_load._observr_patched = True  # type: ignore[attr-defined]
     base_handler.BaseHandler.load_middleware = _patched_load  # type: ignore[method-assign]
 
 
 def _prepend_middleware(handler, transport: "Transport") -> None:
     """Wrap the existing _middleware_chain with ObservrMiddleware."""
+    if isinstance(getattr(handler, "_middleware_chain", None), ObservrMiddleware):
+        return  # already wrapped
     handler._middleware_chain = ObservrMiddleware(transport, handler._middleware_chain)
 
 
