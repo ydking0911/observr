@@ -27,6 +27,7 @@ import (
 	"github.com/ydking0911/observr/server/internal/query"
 	"github.com/ydking0911/observr/server/internal/storage"
 	internaltail "github.com/ydking0911/observr/server/internal/tail"
+	"github.com/ydking0911/observr/server/internal/webhook"
 )
 
 func main() {
@@ -46,7 +47,21 @@ func main() {
 	port := flag.Int("port", 7676, "Port to listen on")
 	dbPath := flag.String("db", "./observr.db", "SQLite database path")
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser automatically")
+	slackWebhook := flag.String("slack-webhook", "", "Slack incoming webhook URL for alerts")
+	discordWebhook := flag.String("discord-webhook", "", "Discord webhook URL for alerts")
+	alertLevel := flag.String("alert-level", "error", "Minimum event level to alert (debug|info|warn|error)")
+	alertThreshold := flag.Int("alert-threshold", 1, "Number of matching events before alerting")
+	alertWindow := flag.Duration("alert-window", 60*time.Second, "Time window for threshold counting")
+	alertCooldown := flag.Duration("alert-cooldown", 5*time.Minute, "Minimum time between alerts")
 	flag.Parse()
+
+	// Validate --alert-level before touching the database.
+	switch *alertLevel {
+	case "debug", "info", "warn", "error":
+		// valid
+	default:
+		log.Fatalf("invalid --alert-level %q: must be one of debug|info|warn|error", *alertLevel)
+	}
 
 	// ── Storage ──────────────────────────────────────────────────────
 	store, err := storage.Open(*dbPath)
@@ -70,7 +85,23 @@ func main() {
 
 	// SSE tail endpoint — also receives broadcasts from the store
 	tailHub := internaltail.NewHub()
-	store.SetBroadcaster(&multiBroadcaster{ws: hub, sse: tailHub})
+
+	// Webhook alerter (optional — only when a webhook URL is provided)
+	var alerter *webhook.Alerter
+	if *slackWebhook != "" || *discordWebhook != "" {
+		alerter = webhook.New(webhook.Config{
+			SlackURL:   *slackWebhook,
+			DiscordURL: *discordWebhook,
+			Level:      *alertLevel,
+			Threshold:  *alertThreshold,
+			Window:     *alertWindow,
+			Cooldown:   *alertCooldown,
+		})
+		log.Printf("webhook alerts enabled (level=%s threshold=%d window=%s cooldown=%s)",
+			*alertLevel, *alertThreshold, *alertWindow, *alertCooldown)
+	}
+
+	store.SetBroadcaster(&multiBroadcaster{ws: hub, sse: tailHub, alert: alerter})
 	mux.Handle("GET /tail", tailHub)
 	mux.Handle("GET /ws", hub)
 
@@ -110,17 +141,24 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+	if alerter != nil {
+		alerter.Stop()
+	}
 }
 
-// multiBroadcaster fans out to both the WebSocket hub and the SSE tail hub.
+// multiBroadcaster fans out to the WebSocket hub, the SSE tail hub, and optionally a webhook alerter.
 type multiBroadcaster struct {
-	ws  storage.Broadcaster
-	sse storage.Broadcaster
+	ws    storage.Broadcaster
+	sse   storage.Broadcaster
+	alert storage.Broadcaster // may be nil
 }
 
 func (m *multiBroadcaster) Broadcast(e storage.Event) {
 	m.ws.Broadcast(e)
 	m.sse.Broadcast(e)
+	if m.alert != nil {
+		m.alert.Broadcast(e)
+	}
 }
 
 // ── "observrd query" subcommand ──────────────────────────────────────────
