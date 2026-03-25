@@ -2,7 +2,9 @@
 package storage
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -207,5 +209,7 @@ func (s *Store) migrate() error {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 func newID() string {
-	return fmt.Sprintf("evt_%d", time.Now().UnixNano())
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return "evt_" + hex.EncodeToString(b)
 }

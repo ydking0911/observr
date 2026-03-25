@@ -1,0 +1,61 @@
+import { Transport } from "./transport.js";
+import { patchConsole, unpatchConsole } from "./logger.js";
+import { Span } from "./span.js";
+import type { ObservrConfig } from "./types.js";
+
+export class ObservrClient {
+  readonly service: string;
+  readonly collectorUrl: string;
+  readonly transport: Transport;
+  private readonly config: Required<ObservrConfig>;
+  private started = false;
+
+  constructor(config: Required<ObservrConfig>) {
+    this.config = config;
+    this.service = config.service;
+    this.collectorUrl = config.collectorUrl;
+    this.transport = new Transport(config.collectorUrl, config.service);
+  }
+
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+
+    patchConsole(this.transport, this.config.logLevel);
+
+    if (this.config.autoInstrument) {
+      this._autoInstrument();
+    }
+  }
+
+  /** Wrap an async function in a named span. */
+  span(name: string, attributes: Record<string, unknown> = {}): Span {
+    return new Span(name, this.transport, attributes);
+  }
+
+  async shutdown(): Promise<void> {
+    unpatchConsole();
+    await this.transport.shutdown();
+    this.started = false;
+  }
+
+  private _autoInstrument(): void {
+    if (typeof require !== "undefined") {
+      try {
+        require("express");
+        this._instrumentExpress();
+      } catch {
+        // Express not installed
+      }
+    }
+  }
+
+  private _instrumentExpress(): void {
+    try {
+      const { instrumentExpress } = require("./integrations/express.js");
+      instrumentExpress(this.transport);
+    } catch {
+      // skip
+    }
+  }
+}

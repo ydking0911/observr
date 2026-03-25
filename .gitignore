@@ -32,6 +32,7 @@ node_modules/
 dashboard/dist/
 server/internal/dashboard/dist/*
 !server/internal/dashboard/dist/.gitkeep
+sdk/node/dist/
 .pnp
 .pnp.js
 .yarn/
@@ -63,3 +64,6 @@ tmp/
 .agent/
 .agents/
 .claude/
+
+# ── build ──────────────────────────────────────────────────────────────────
+server/observrd

@@ -37,13 +37,13 @@ func NewHandler(s querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := parseHTTPQuery(r)
 
+		if q.Format == "json" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+
 		if err := Execute(s, q, w); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
-		}
-
-		if q.Format == "json" {
-			w.Header().Set("Content-Type", "application/json")
 		}
 	})
 }
@@ -100,10 +100,11 @@ func writeText(out io.Writer, events []storage.Event) error {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n-3] + "..."
+	return string(runes[:n-3]) + "..."
 }
 
 // ── HTTP param parsing ─────────────────────────────────────────────────────
