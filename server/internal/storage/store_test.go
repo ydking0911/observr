@@ -293,6 +293,9 @@ func TestStats(t *testing.T) {
 	if !st.OldestEvent.Truncate(time.Second).Equal(old) {
 		t.Errorf("OldestEvent mismatch: got %v, want %v", st.OldestEvent, old)
 	}
+	if st.DBSizeBytes <= 0 {
+		t.Errorf("expected DBSizeBytes > 0 after insert, got %d", st.DBSizeBytes)
+	}
 }
 
 func TestStatsSingleEvent(t *testing.T) {
