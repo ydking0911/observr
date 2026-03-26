@@ -25,3 +25,13 @@ export interface Stats {
   p99_ms: number;
   rps: number;
 }
+
+export interface Pattern {
+  fingerprint: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  level: Level;
+  services: string[];
+  sample_event_id: string;
+}
