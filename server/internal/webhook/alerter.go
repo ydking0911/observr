@@ -156,8 +156,12 @@ func (a *Alerter) sendSlack(e storage.Event, count int) error {
 	return a.post(a.cfg.SlackURL, payload)
 }
 
+// sendDiscord posts an embed to the Discord webhook.
+// Color mapping: warn → 0xF1C40F (yellow/gold), all other levels → 0xE74C3C (red).
+// debug and info are intentionally colored red; --alert-level is expected to be
+// set to "warn" or "error" in practice, so finer-grained color mapping is omitted.
 func (a *Alerter) sendDiscord(e storage.Event, count int) error {
-	color := 0xE74C3C // red
+	color := 0xE74C3C // red (error / info / debug)
 	if e.Level == "warn" {
 		color = 0xF1C40F // yellow/gold
 	}
@@ -190,8 +194,10 @@ func (a *Alerter) post(url string, payload any) error {
 	defer resp.Body.Close()
 	// Drain body to enable HTTP keep-alive connection reuse.
 	if resp.StatusCode >= 300 {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		return fmt.Errorf("webhook returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		buf := bytes.Buffer{}
+		_, _ = io.Copy(&buf, io.LimitReader(resp.Body, 256))
+		_, _ = io.Copy(io.Discard, resp.Body) // drain remainder for keep-alive reuse
+		return fmt.Errorf("webhook returned status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
