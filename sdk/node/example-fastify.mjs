@@ -11,9 +11,9 @@
  */
 
 import Fastify from "fastify";
-import { init, fastifyPlugin } from "./dist/index.mjs";
+import { init, fastifyPlugin } from "./dist/index.js";
 
-const client = init({ endpoint: "http://localhost:7676" });
+const client = init({ collectorUrl: "http://localhost:7676" });
 const app = Fastify({ logger: false });
 
 // Register observr plugin
