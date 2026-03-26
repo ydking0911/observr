@@ -166,3 +166,173 @@ func TestAttributesRoundtrip(t *testing.T) {
 		t.Errorf("attribute user_id not preserved: %v", got[0].Attributes)
 	}
 }
+
+func TestDeleteBefore(t *testing.T) {
+	s := newTestStore(t)
+
+	now := time.Now().UTC()
+	old := now.Add(-48 * time.Hour)
+	recent := now.Add(-1 * time.Hour)
+
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: old, Type: "log", Level: "info", Message: "old event"},
+		{Service: "svc", Timestamp: recent, Type: "log", Level: "info", Message: "recent event"},
+	})
+
+	// Delete events older than 24h
+	cutoff := now.Add(-24 * time.Hour)
+	n, err := s.DeleteBefore(cutoff)
+	if err != nil {
+		t.Fatalf("DeleteBefore: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 deleted event, got %d", n)
+	}
+
+	remaining, err := s.Query(storage.QueryFilter{Last: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 remaining event, got %d", len(remaining))
+	}
+	if remaining[0].Message != "recent event" {
+		t.Errorf("wrong event remained: %q", remaining[0].Message)
+	}
+}
+
+func TestDeleteBeforeUnlimited(t *testing.T) {
+	s := newTestStore(t)
+
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: time.Now().Add(-72 * time.Hour).UTC(), Type: "log", Level: "info", Message: "old"},
+		{Service: "svc", Timestamp: time.Now().UTC(), Type: "log", Level: "info", Message: "new"},
+	})
+
+	// Deleting with zero time should delete nothing (caller should skip when retention=0)
+	n, err := s.DeleteBefore(time.Time{})
+	if err != nil {
+		t.Fatalf("DeleteBefore zero: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 deletions for zero cutoff, got %d", n)
+	}
+}
+
+func TestDeleteBeforeAllDeleted(t *testing.T) {
+	s := newTestStore(t)
+
+	now := time.Now().UTC()
+
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: now.Add(-72 * time.Hour), Type: "log", Level: "info", Message: "very old 1"},
+		{Service: "svc", Timestamp: now.Add(-48 * time.Hour), Type: "log", Level: "info", Message: "very old 2"},
+	})
+
+	// cutoff이 현재 시각 → 모든 이벤트가 삭제되어야 함
+	n, err := s.DeleteBefore(now)
+	if err != nil {
+		t.Fatalf("DeleteBefore: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 deleted events, got %d", n)
+	}
+
+	remaining, err := s.Query(storage.QueryFilter{Last: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("expected 0 remaining events, got %d", len(remaining))
+	}
+}
+
+func TestDeleteBeforeEmptyTable(t *testing.T) {
+	s := newTestStore(t)
+
+	// 빈 테이블에서 DeleteBefore 호출 → 0 반환
+	n, err := s.DeleteBefore(time.Now().UTC())
+	if err != nil {
+		t.Fatalf("DeleteBefore on empty table: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 deleted from empty table, got %d", n)
+	}
+}
+
+func TestStats(t *testing.T) {
+	s := newTestStore(t)
+
+	st, err := s.Stats()
+	if err != nil {
+		t.Fatalf("Stats on empty store: %v", err)
+	}
+	if st.EventCount != 0 {
+		t.Errorf("expected 0 events, got %d", st.EventCount)
+	}
+	if st.OldestEvent != nil {
+		t.Errorf("expected nil OldestEvent for empty store")
+	}
+
+	old := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Second)
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: old, Type: "log", Level: "info", Message: "first"},
+		{Service: "svc", Timestamp: time.Now().UTC(), Type: "log", Level: "info", Message: "second"},
+	})
+
+	st, err = s.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.EventCount != 2 {
+		t.Errorf("expected 2 events, got %d", st.EventCount)
+	}
+	if st.OldestEvent == nil {
+		t.Fatal("expected non-nil OldestEvent")
+	}
+	if !st.OldestEvent.Truncate(time.Second).Equal(old) {
+		t.Errorf("OldestEvent mismatch: got %v, want %v", st.OldestEvent, old)
+	}
+	if st.DBSizeBytes <= 0 {
+		t.Errorf("expected DBSizeBytes > 0 after insert, got %d", st.DBSizeBytes)
+	}
+}
+
+func TestStatsSingleEvent(t *testing.T) {
+	s := newTestStore(t)
+
+	ts := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: ts, Type: "log", Level: "info", Message: "only one"},
+	})
+
+	st, err := s.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if st.EventCount != 1 {
+		t.Errorf("expected 1 event, got %d", st.EventCount)
+	}
+	if st.OldestEvent == nil {
+		t.Fatal("expected non-nil OldestEvent")
+	}
+	if !st.OldestEvent.Truncate(time.Second).Equal(ts) {
+		t.Errorf("OldestEvent mismatch: got %v, want %v", st.OldestEvent, ts)
+	}
+}
+
+func TestVacuum(t *testing.T) {
+	s := newTestStore(t)
+
+	// 데이터 삽입 후 삭제하여 vacuum이 의미 있는 상황 만들기
+	now := time.Now().UTC()
+	s.Insert([]storage.Event{ //nolint:errcheck
+		{Service: "svc", Timestamp: now.Add(-1 * time.Hour), Type: "log", Level: "info", Message: "to be deleted"},
+	})
+	_, _ = s.DeleteBefore(now)
+
+	// Vacuum이 에러 없이 실행되는지 확인
+	if err := s.Vacuum(); err != nil {
+		t.Errorf("Vacuum returned unexpected error: %v", err)
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,6 +53,7 @@ func main() {
 	port := flag.Int("port", 7676, "Port to listen on")
 	dbPath := flag.String("db", "./observr.db", "SQLite database path")
 	noBrowser := flag.Bool("no-browser", false, "Don't open browser automatically")
+	retention := flag.String("retention", "7d", "Event retention period (e.g. 7d, 24h). Use 0 to disable.")
 	slackWebhook := flag.String("slack-webhook", "", "Slack incoming webhook URL for alerts")
 	discordWebhook := flag.String("discord-webhook", "", "Discord webhook URL for alerts")
 	alertLevel := flag.String("alert-level", "error", "Minimum event level to alert (debug|info|warn|error)")
@@ -59,6 +61,11 @@ func main() {
 	alertWindow := flag.Duration("alert-window", 60*time.Second, "Time window for threshold counting")
 	alertCooldown := flag.Duration("alert-cooldown", 5*time.Minute, "Minimum time between alerts")
 	flag.Parse()
+
+	retentionDur, err := parseRetention(*retention)
+	if err != nil {
+		log.Fatalf("invalid --retention %q: %v", *retention, err)
+	}
 
 	// Validate --alert-level before touching the database.
 	switch *alertLevel {
@@ -131,6 +138,18 @@ func main() {
 		go openBrowser(fmt.Sprintf("http://localhost%s", addr))
 	}
 
+	// ── Retention cleanup goroutine ──────────────────────────────────
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	var cleanupWg sync.WaitGroup
+	if retentionDur > 0 {
+		log.Printf("retention policy: deleting events older than %s (checked every 1h)", *retention)
+		cleanupWg.Add(1)
+		go func() {
+			defer cleanupWg.Done()
+			runCleanup(cleanupCtx, store, retentionDur)
+		}()
+	}
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -144,9 +163,12 @@ func main() {
 	<-quit
 	log.Println("shutting down...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	cleanupCancel()
+	cleanupWg.Wait() // wait for cleanup goroutine to exit before store.Close()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
 	if alerter != nil {
@@ -179,6 +201,7 @@ func runQuery(args []string) {
 	traceID := fs.String("trace-id", "", "Filter by trace ID")
 	path := fs.String("path", "", "Filter by HTTP path")
 	format := fs.String("format", "json", "Output format: json | text")
+	stats := fs.Bool("stats", false, "Show database statistics instead of events")
 	_ = fs.Parse(args)
 
 	store, err := storage.Open(*dbPath)
@@ -187,6 +210,22 @@ func runQuery(args []string) {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	if *stats {
+		st, err := store.Stats()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "stats error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("events:    %d\n", st.EventCount)
+		if st.OldestEvent != nil {
+			fmt.Printf("oldest:    %s\n", st.OldestEvent.Format(time.RFC3339))
+		} else {
+			fmt.Printf("oldest:    —\n")
+		}
+		fmt.Printf("db size:   %.2f MB\n", float64(st.DBSizeBytes)/1024/1024)
+		return
+	}
 
 	q := query.Query{
 		Last:    *last,
@@ -404,6 +443,86 @@ func runPatterns(args []string) {
 			p.LastSeen.Format("15:04:05"),
 		)
 	}
+}
+
+// runCleanup deletes events older than retention on start and then every hour.
+func runCleanup(ctx context.Context, store *storage.Store, retention time.Duration) {
+	doCleanup := func() {
+		cutoff := time.Now().UTC().Add(-retention)
+		n, err := store.DeleteBefore(cutoff)
+		if err != nil {
+			log.Printf("retention cleanup error: %v", err)
+			return
+		}
+		if n > 0 {
+			log.Printf("retention: deleted %d events older than %s", n, cutoff.Format(time.RFC3339))
+			if err := store.Vacuum(); err != nil {
+				log.Printf("retention vacuum error: %v", err)
+			}
+		}
+	}
+
+	doCleanup()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			doCleanup()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// maxRetentionDays is the upper bound for the "Nd" retention format.
+// time.Duration overflows int64 above ~106751 days (about 292 years).
+const maxRetentionDays = 106751
+
+// parseRetention parses a retention string like "7d", "24h", "1h30m", or "0".
+// Returns 0 for "0" (unlimited).
+//
+// Accepted formats:
+//   - "Nd"  — positive integer days (e.g. "7d", "30d"); custom because
+//     time.ParseDuration does not support the "d" unit.
+//   - any Go duration string accepted by time.ParseDuration (e.g. "24h", "1h30m")
+//
+// "Nd" form: N must be a bare positive integer with no trailing characters.
+// Values above maxRetentionDays are rejected to prevent int64 overflow that
+// would turn the cutoff into a future timestamp and wipe all events.
+func parseRetention(s string) (time.Duration, error) {
+	if s == "0" {
+		return 0, nil
+	}
+	if strings.HasSuffix(s, "d") {
+		n := strings.TrimSuffix(s, "d")
+		// Require that n consists solely of decimal digits so that inputs
+		// like "24h1d" (Sscanf would silently parse "24") are rejected.
+		if n == "" {
+			return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
+		}
+		for _, c := range n {
+			if c < '0' || c > '9' {
+				return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
+			}
+		}
+		var days int
+		if _, err := fmt.Sscanf(n, "%d", &days); err != nil || days <= 0 {
+			return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
+		}
+		if days > maxRetentionDays {
+			return 0, fmt.Errorf("retention too large: %dd exceeds maximum of %dd (~292 years)", days, maxRetentionDays)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("must be positive (use 0 to disable)")
+	}
+	return d, nil
 }
 
 func openBrowser(url string) {

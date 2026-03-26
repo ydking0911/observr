@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -43,9 +44,17 @@ type QueryFilter struct {
 	Since   time.Time
 }
 
+// StoreStats holds summary statistics about the database.
+type StoreStats struct {
+	EventCount  int64
+	OldestEvent *time.Time
+	DBSizeBytes int64
+}
+
 // Store wraps SQLite and exposes typed read/write methods.
 type Store struct {
 	db          *sql.DB
+	path        string
 	broadcaster Broadcaster
 }
 
@@ -54,7 +63,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	s := &Store{db: db}
+	s := &Store{db: db, path: path}
 	if err := s.migrate(); err != nil {
 		return nil, err
 	}
@@ -204,6 +213,59 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_events_path      ON events(path);
 	`)
 	return err
+}
+
+// ── Retention ──────────────────────────────────────────────────────────────
+
+// DeleteBefore removes events with a timestamp older than t and returns the
+// number of deleted rows.
+func (s *Store) DeleteBefore(t time.Time) (int64, error) {
+	// Use datetime() to compare so SQLite parses both sides as timestamps
+	// rather than relying on lexicographic TEXT ordering of RFC3339Nano
+	// strings (which can be unreliable when the fractional-second part
+	// has different widths, e.g. "...00Z" vs "...00.5Z").
+	res, err := s.db.Exec(
+		`DELETE FROM events WHERE datetime(timestamp) < datetime(?)`,
+		t.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// Vacuum reclaims disk space freed by prior deletions.
+func (s *Store) Vacuum() error {
+	_, err := s.db.Exec(`VACUUM`)
+	return err
+}
+
+// Stats returns a summary of the current database state.
+func (s *Store) Stats() (StoreStats, error) {
+	var st StoreStats
+
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&st.EventCount); err != nil {
+		return st, err
+	}
+
+	var oldest sql.NullString
+	if err := s.db.QueryRow(`SELECT MIN(timestamp) FROM events`).Scan(&oldest); err != nil {
+		return st, err
+	}
+	if oldest.Valid && oldest.String != "" {
+		t, parseErr := time.Parse(time.RFC3339Nano, oldest.String)
+		if parseErr == nil {
+			st.OldestEvent = &t
+		}
+	}
+
+	if s.path != "" {
+		if info, err := os.Stat(s.path); err == nil {
+			st.DBSizeBytes = info.Size()
+		}
+	}
+
+	return st, nil
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
