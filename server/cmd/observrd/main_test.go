@@ -26,6 +26,10 @@ func TestParseRetention(t *testing.T) {
 		{"", 0, true},
 		{"-24h", 0, true},
 		{"0h", 0, true},
+		// regression: int64 overflow guard
+		{"999999d", 0, true},
+		// regression: mixed input silent mis-parse guard
+		{"24h1d", 0, true},
 	}
 
 	for _, tc := range tests {

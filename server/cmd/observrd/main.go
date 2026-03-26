@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -139,9 +140,14 @@ func main() {
 
 	// ── Retention cleanup goroutine ──────────────────────────────────
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	var cleanupWg sync.WaitGroup
 	if retentionDur > 0 {
 		log.Printf("retention policy: deleting events older than %s (checked every 1h)", *retention)
-		go runCleanup(cleanupCtx, store, retentionDur)
+		cleanupWg.Add(1)
+		go func() {
+			defer cleanupWg.Done()
+			runCleanup(cleanupCtx, store, retentionDur)
+		}()
 	}
 
 	// Graceful shutdown
@@ -158,6 +164,7 @@ func main() {
 	log.Println("shutting down...")
 
 	cleanupCancel()
+	cleanupWg.Wait() // wait for cleanup goroutine to exit before store.Close()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
@@ -472,8 +479,13 @@ func runCleanup(ctx context.Context, store *storage.Store, retention time.Durati
 // time.Duration overflows int64 above ~106751 days (about 292 years).
 const maxRetentionDays = 106751
 
-// parseRetention parses a retention string like "7d", "24h", or "0".
-// Returns 0 for "0" (unlimited). Supports h and d units.
+// parseRetention parses a retention string like "7d", "24h", "1h30m", or "0".
+// Returns 0 for "0" (unlimited).
+//
+// Accepted formats:
+//   - "Nd"  — positive integer days (e.g. "7d", "30d"); custom because
+//     time.ParseDuration does not support the "d" unit.
+//   - any Go duration string accepted by time.ParseDuration (e.g. "24h", "1h30m")
 //
 // "Nd" form: N must be a bare positive integer with no trailing characters.
 // Values above maxRetentionDays are rejected to prevent int64 overflow that
@@ -487,16 +499,16 @@ func parseRetention(s string) (time.Duration, error) {
 		// Require that n consists solely of decimal digits so that inputs
 		// like "24h1d" (Sscanf would silently parse "24") are rejected.
 		if n == "" {
-			return 0, fmt.Errorf("must be a positive integer followed by d or h (e.g. 7d, 24h)")
+			return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
 		}
 		for _, c := range n {
 			if c < '0' || c > '9' {
-				return 0, fmt.Errorf("must be a positive integer followed by d or h (e.g. 7d, 24h)")
+				return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
 			}
 		}
 		var days int
 		if _, err := fmt.Sscanf(n, "%d", &days); err != nil || days <= 0 {
-			return 0, fmt.Errorf("must be a positive integer followed by d or h (e.g. 7d, 24h)")
+			return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
 		}
 		if days > maxRetentionDays {
 			return 0, fmt.Errorf("retention too large: %dd exceeds maximum of %dd (~292 years)", days, maxRetentionDays)
@@ -505,7 +517,7 @@ func parseRetention(s string) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		return 0, fmt.Errorf("must be a positive integer followed by d or h (e.g. 7d, 24h)")
+		return 0, fmt.Errorf("must be a positive integer days (e.g. 7d, 30d) or a Go duration (e.g. 24h, 1h30m)")
 	}
 	if d <= 0 {
 		return 0, fmt.Errorf("must be positive (use 0 to disable)")
