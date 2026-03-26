@@ -18,7 +18,14 @@
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["observability", "tracing", "logging", "ai", "devtools", "apm"],
+  "keywords": [
+    "observability",
+    "tracing",
+    "logging",
+    "ai",
+    "devtools",
+    "apm"
+  ],
   "author": "ydking0911",
   "license": "MIT",
   "repository": {
@@ -29,15 +36,20 @@
   "homepage": "https://github.com/ydking0911/observr",
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "fastify": "^5.8.4",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.5.0"
   },
   "peerDependencies": {
-    "express": ">=4.0.0"
+    "express": ">=4.0.0",
+    "fastify": ">=4.0.0"
   },
   "peerDependenciesMeta": {
     "express": {
+      "optional": true
+    },
+    "fastify": {
       "optional": true
     }
   },

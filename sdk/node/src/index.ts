@@ -17,6 +17,7 @@ export { ObservrClient } from "./client.js";
 export { Transport } from "./transport.js";
 export { Span } from "./span.js";
 export { expressMiddleware } from "./integrations/express.js";
+export { fastifyPlugin } from "./integrations/fastify.js";
 export type { ObservrConfig, ObservrEvent } from "./types.js";
 
 import { ObservrClient } from "./client.js";
