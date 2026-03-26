@@ -220,8 +220,12 @@ func (s *Store) migrate() error {
 // DeleteBefore removes events with a timestamp older than t and returns the
 // number of deleted rows.
 func (s *Store) DeleteBefore(t time.Time) (int64, error) {
+	// Use datetime() to compare so SQLite parses both sides as timestamps
+	// rather than relying on lexicographic TEXT ordering of RFC3339Nano
+	// strings (which can be unreliable when the fractional-second part
+	// has different widths, e.g. "...00Z" vs "...00.5Z").
 	res, err := s.db.Exec(
-		`DELETE FROM events WHERE timestamp < ?`,
+		`DELETE FROM events WHERE datetime(timestamp) < datetime(?)`,
 		t.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
