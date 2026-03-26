@@ -47,6 +47,12 @@ export class ObservrClient {
       } catch {
         // Express not installed
       }
+      try {
+        require("fastify");
+        this._instrumentFastify();
+      } catch {
+        // Fastify not installed
+      }
     }
   }
 
@@ -54,6 +60,15 @@ export class ObservrClient {
     try {
       const { instrumentExpress } = require("./integrations/express.js");
       instrumentExpress(this.transport);
+    } catch {
+      // skip
+    }
+  }
+
+  private _instrumentFastify(): void {
+    try {
+      const { instrumentFastify } = require("./integrations/fastify.js");
+      instrumentFastify(this.transport);
     } catch {
       // skip
     }
