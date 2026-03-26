@@ -79,7 +79,9 @@ export function instrumentFastify(transport: Transport): void {
       return app;
     };
     Object.assign(wrapped, original);
-    wrapped.__observr_patched = true;
+    // Mark the module object itself (not wrapped) so the guard at the top
+    // of this function reliably detects re-entry when mod.default exists.
+    mod.__observr_patched = true;
 
     // Patch the CommonJS module cache so all subsequent require('fastify')
     // calls return the wrapped factory.
@@ -88,6 +90,7 @@ export function instrumentFastify(transport: Transport): void {
     const cached = Module._cache[require.resolve("fastify")];
     if (cached) {
       if (mod.default) {
+        mod.default = wrapped;
         cached.exports.default = wrapped;
       } else {
         cached.exports = wrapped;
