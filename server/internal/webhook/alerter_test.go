@@ -1,3 +1,10 @@
+// Package webhook_test verifies alerter behaviour.
+//
+// NOTE(deferred): Several tests use time.Sleep to wait for the async queue/send
+// goroutine to complete. This works reliably in practice (generous margins), but
+// is susceptible to flakiness under heavy CI load. A future improvement would
+// replace sleeps with a channel or sync.WaitGroup signal in the httptest handler.
+// Tracked: #3 in code-review backlog.
 package webhook_test
 
 import (
@@ -426,7 +433,7 @@ func TestAlerterSlackPayloadCountLine(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Discord: warn イベントは yellow カラー
+// Discord: warn-level events use yellow color
 // ---------------------------------------------------------------------------
 
 // TestAlerterDiscordWarnColor verifies that warn-level events produce a Discord
