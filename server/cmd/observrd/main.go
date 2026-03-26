@@ -19,11 +19,13 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ydking0911/observr/server/internal/collector"
 	"github.com/ydking0911/observr/server/internal/dashboard"
+	"github.com/ydking0911/observr/server/internal/patterns"
 	"github.com/ydking0911/observr/server/internal/query"
 	"github.com/ydking0911/observr/server/internal/storage"
 	internaltail "github.com/ydking0911/observr/server/internal/tail"
@@ -40,6 +42,9 @@ func main() {
 			return
 		case "tail":
 			runTail(os.Args[2:])
+			return
+		case "patterns":
+			runPatterns(os.Args[2:])
 			return
 		}
 	}
@@ -78,6 +83,9 @@ func main() {
 
 	// Query API (for CLI + AI agents)
 	mux.Handle("GET /query", query.NewHandler(store))
+
+	// Pattern detection API
+	mux.Handle("GET /patterns", patterns.NewHandler(store))
 
 	// WebSocket for real-time dashboard streaming
 	hub := dashboard.NewHub(store)
@@ -351,6 +359,49 @@ func printPretty(e storage.Event) {
 			lvl,
 			colCyan, e.Service, colReset,
 			e.Message,
+		)
+	}
+}
+
+// ── "observrd patterns" subcommand ───────────────────────────────────────
+
+func runPatterns(args []string) {
+	fs := flag.NewFlagSet("patterns", flag.ExitOnError)
+	dbPath := fs.String("db", "./observr.db", "SQLite database path")
+	since := fs.Duration("since", 15*time.Minute, "Time window (e.g. 15m, 1h)")
+	level := fs.String("level", "", "Filter by level (error, warn, info, debug)")
+	minCount := fs.Int("min-count", 1, "Minimum event count per pattern")
+	_ = fs.Parse(args)
+
+	store, err := storage.Open(*dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	ps, err := patterns.Fetch(store, *since, *level, *minCount)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "patterns error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(ps) == 0 {
+		fmt.Println("no patterns found")
+		return
+	}
+
+	for _, p := range ps {
+		lc := levelColor(p.Level)
+		fmt.Printf("%s%-5s%s  %s%3d×%s  %s\n",
+			lc, p.Level, colReset,
+			colBold, p.Count, colReset,
+			p.Fingerprint,
+		)
+		fmt.Printf("       services: %s  window: %s – %s\n\n",
+			strings.Join(p.Services, ", "),
+			p.FirstSeen.Format("15:04:05"),
+			p.LastSeen.Format("15:04:05"),
 		)
 	}
 }
