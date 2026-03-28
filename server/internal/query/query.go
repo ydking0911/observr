@@ -2,6 +2,7 @@
 package query
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ type Query struct {
 	Level   string
 	TraceID string
 	Path    string
-	Format  string // "json" | "text"
+	Format  string // "json" | "text" | "csv"
 }
 
 type querier interface {
@@ -33,11 +34,16 @@ type querier interface {
 // Example:
 //
 //	GET /query?level=error&last=50&format=json
+//	GET /query?level=error&last=50&format=csv
 func NewHandler(s querier) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := parseHTTPQuery(r)
 
-		if q.Format == "json" {
+		switch q.Format {
+		case "csv":
+			w.Header().Set("Content-Type", "text/csv")
+			w.Header().Set("Content-Disposition", `attachment; filename="observr-events.csv"`)
+		default:
 			w.Header().Set("Content-Type", "application/json")
 		}
 
@@ -66,6 +72,8 @@ func Execute(s querier, q Query, out io.Writer) error {
 	switch q.Format {
 	case "json":
 		return writeJSON(out, events)
+	case "csv":
+		return writeCSV(out, events)
 	default:
 		return writeText(out, events)
 	}
@@ -97,6 +105,43 @@ func writeText(out io.Writer, events []storage.Event) error {
 		)
 	}
 	return tw.Flush()
+}
+
+func writeCSV(out io.Writer, events []storage.Event) error {
+	w := csv.NewWriter(out)
+	header := []string{"timestamp", "level", "service", "type", "method", "path", "status_code", "duration_ms", "message", "trace_id", "span_id", "id"}
+	if err := w.Write(header); err != nil {
+		return err
+	}
+	for _, e := range events {
+		statusCode := ""
+		if e.StatusCode != 0 {
+			statusCode = strconv.Itoa(e.StatusCode)
+		}
+		durMS := ""
+		if e.DurationMS > 0 {
+			durMS = fmt.Sprintf("%.3f", e.DurationMS)
+		}
+		row := []string{
+			e.Timestamp.UTC().Format(time.RFC3339),
+			e.Level,
+			e.Service,
+			e.Type,
+			e.Method,
+			e.Path,
+			statusCode,
+			durMS,
+			e.Message,
+			e.TraceID,
+			e.SpanID,
+			e.ID,
+		}
+		if err := w.Write(row); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
 }
 
 func truncate(s string, n int) string {
