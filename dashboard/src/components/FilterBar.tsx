@@ -9,6 +9,7 @@ interface Props {
   filters: Filters;
   onChange: (f: Filters) => void;
   onClear: () => void;
+  onExport: (format: "json" | "csv") => void;
   total: number;
 }
 
@@ -20,7 +21,7 @@ const LEVELS: Array<{ value: Level | ""; label: string }> = [
   { value: "debug", label: "Debug" },
 ];
 
-export function FilterBar({ filters, onChange, onClear, total }: Props) {
+export function FilterBar({ filters, onChange, onClear, onExport, total }: Props) {
   return (
     <div
       style={{
@@ -117,6 +118,38 @@ export function FilterBar({ filters, onChange, onClear, total }: Props) {
       >
         Clear
       </button>
+
+      {/* Export */}
+      <div style={{ display: "flex", gap: 2 }}>
+        {(["json", "csv"] as const).map((fmt) => (
+          <button
+            key={fmt}
+            onClick={() => onExport(fmt)}
+            title={`Export visible events as ${fmt.toUpperCase()}`}
+            style={{
+              padding: "5px 10px",
+              border: "1px solid var(--border)",
+              borderRadius: fmt === "json" ? "var(--radius-sm) 0 0 var(--radius-sm)" : "0 var(--radius-sm) var(--radius-sm) 0",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontSize: "var(--text-sm)",
+              fontFamily: "var(--font-sans)",
+              cursor: "pointer",
+              transition: "all var(--duration-fast)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--accent)";
+              e.currentTarget.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.color = "var(--text-secondary)";
+            }}
+          >
+            ↓ {fmt.toUpperCase()}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -38,6 +38,49 @@ function applyFilters(events: ObservrEvent[], filters: Filters): ObservrEvent[] 
   });
 }
 
+function exportEvents(events: ObservrEvent[], format: "json" | "csv") {
+  let content: string;
+  let mimeType: string;
+  let filename: string;
+
+  if (format === "json") {
+    content = JSON.stringify(events, null, 2);
+    mimeType = "application/json";
+    filename = "observr-events.json";
+  } else {
+    const header = ["timestamp", "level", "service", "type", "method", "path", "status_code", "duration_ms", "message", "trace_id", "span_id", "id"];
+    const rows = events.map((e) =>
+      [
+        e.timestamp,
+        e.level,
+        e.service,
+        e.type,
+        e.method ?? "",
+        e.path ?? "",
+        e.status_code == null || e.status_code === 0 ? "" : e.status_code.toString(),
+        e.duration_ms ? e.duration_ms.toFixed(3) : "",
+        e.message,
+        e.trace_id ?? "",
+        e.span_id ?? "",
+        e.id,
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    );
+    content = [header.join(","), ...rows].join("\r\n");
+    mimeType = "text/csv";
+    filename = "observr-events.csv";
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+}
+
 type Tab = "events" | "patterns";
 
 const SINCE_OPTIONS = ["15m", "1h", "6h", "24h"];
@@ -180,6 +223,7 @@ export default function App() {
                 filters={filters}
                 onChange={setFilters}
                 onClear={clear}
+                onExport={(fmt) => exportEvents(filtered, fmt)}
                 total={filtered.length}
               />
             </div>
