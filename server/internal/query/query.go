@@ -43,8 +43,13 @@ func NewHandler(s querier) http.Handler {
 		case "csv":
 			w.Header().Set("Content-Type", "text/csv")
 			w.Header().Set("Content-Disposition", `attachment; filename="observr-events.csv"`)
-		default:
+		case "json", "":
 			w.Header().Set("Content-Type", "application/json")
+		case "text":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		default:
+			http.Error(w, "unsupported format: "+q.Format, http.StatusBadRequest)
+			return
 		}
 
 		if err := Execute(s, q, w); err != nil {
@@ -109,6 +114,7 @@ func writeText(out io.Writer, events []storage.Event) error {
 
 func writeCSV(out io.Writer, events []storage.Event) error {
 	w := csv.NewWriter(out)
+	w.UseCRLF = true
 	header := []string{"timestamp", "level", "service", "type", "method", "path", "status_code", "duration_ms", "message", "trace_id", "span_id", "id"}
 	if err := w.Write(header); err != nil {
 		return err
