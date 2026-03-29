@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/observr
+      url: https://www.npmjs.com/package/@ydking0911/observr
     permissions:
       id-token: write
 
@@ -70,3 +70,5 @@ jobs:
       - name: Publish to npm
         run: npm publish --provenance --access public
         working-directory: sdk/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
