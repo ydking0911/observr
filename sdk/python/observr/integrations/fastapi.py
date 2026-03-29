@@ -84,7 +84,7 @@ class ObservrMiddleware:
                 "status_code": status_code,
                 "duration_ms": round(duration_ms, 2),
                 "attributes": {
-                    "query_string": scope.get("query_string", b"").decode(),
+                    "query_string": scope.get("query_string", b"").decode("utf-8", errors="replace"),
                     "client": scope.get("client"),
                 },
             })

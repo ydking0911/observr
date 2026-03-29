@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   pull_request:
-    branches: [main]
+    branches: [develop]
 
 jobs:
   # ── Python SDK ────────────────────────────────────────────────────────
@@ -37,10 +37,10 @@ jobs:
           cd sdk/python
           python -m pytest tests/test_transport.py tests/test_logger.py -v
 
-      - name: Integration tests (FastAPI)
+      - name: Integration tests (FastAPI + Django + lazy instrumentation)
         run: |
           cd sdk/python
-          python -m pytest tests/test_integration.py -v -k "fastapi or log or span"
+          python -m pytest tests/test_integration.py tests/test_lazy_instrument.py tests/test_django.py -v
 
   # ── Go server ─────────────────────────────────────────────────────────
   go:
@@ -86,6 +86,36 @@ jobs:
           name: observrd-linux-amd64
           path: server/bin/observrd
           retention-days: 7
+
+  # ── Node.js SDK ───────────────────────────────────────────────────────
+  node:
+    name: Node.js SDK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sdk/node/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sdk/node
+        run: npm ci
+
+      - name: Type-check
+        working-directory: sdk/node
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        working-directory: sdk/node
+        run: npm test
+
+      - name: Build
+        working-directory: sdk/node
+        run: npm run build
 
   # ── Dashboard ─────────────────────────────────────────────────────────
   dashboard:
