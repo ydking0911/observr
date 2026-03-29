@@ -89,11 +89,11 @@ jobs:
       # Linux arm64 cross-compile toolchain
       - name: Install arm64 cross compiler
         if: matrix.goarch == 'arm64' && matrix.goos == 'linux'
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Install sqlite3 (Linux)
         if: matrix.goos == 'linux'
-        run: sudo apt-get install -y gcc libc-dev
+        run: sudo apt-get update && sudo apt-get install -y gcc libc-dev
 
       - name: go mod tidy
         working-directory: server
