@@ -2,7 +2,7 @@
  * observr — Zero-config observability for AI agents and developers.
  *
  * Usage:
- *   import observr from "observr";
+ *   import observr from "@ydking0911/observr";
  *   observr.init({ service: "my-api" });
  *
  *   // Manual span

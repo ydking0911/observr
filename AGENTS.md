@@ -10,7 +10,7 @@ observr is a **zero-config local observability stack** composed of:
 
 - **`observrd`** — Go 1.22 daemon. Receives events via HTTP, stores in SQLite, streams via WebSocket (dashboard) and SSE (`tail` CLI).
 - **Python SDK** — `pip install observr`. Auto-instruments Flask, FastAPI, Django. Lazy import hook via `builtins.__import__` override.
-- **Node.js SDK** — `npm install observr`. Auto-instruments Express. Console patch. Manual spans via async `.run()`.
+- **Node.js SDK** — `npm install @ydking0911/observr`. Auto-instruments Express. Console patch. Manual spans via async `.run()`.
 - **React dashboard** — Vite SPA embedded in the `observrd` binary.
 
 ---

@@ -111,7 +111,7 @@ observr/
 │   │   │   ├── _span.py        # Manual span context manager
 │   │   │   └── integrations/   # Flask, FastAPI, Django patches
 │   │   └── tests/
-│   └── node/                   # Node.js/TypeScript SDK (npm install observr)
+│   └── node/                   # Node.js/TypeScript SDK (npm install @ydking0911/observr)
 │       └── src/
 │           ├── index.ts        # Public API
 │           ├── transport.ts    # Background fetch transport
