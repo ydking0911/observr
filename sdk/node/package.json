@@ -1,6 +1,6 @@
 {
   "name": "@ydking0911/observr",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Zero-config observability for AI agents and developers",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
