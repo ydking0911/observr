@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -218,8 +219,12 @@ func (s *Store) migrate() error {
 		return err
 	}
 	// Idempotent column addition for databases created before this migration.
-	// SQLite returns "duplicate column name" if it already exists — safe to ignore.
-	s.db.Exec(`ALTER TABLE events ADD COLUMN parent_span_id TEXT`) //nolint:errcheck
+	// Only suppress the expected "duplicate column name" error; surface anything else.
+	if _, err := s.db.Exec(`ALTER TABLE events ADD COLUMN parent_span_id TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate add parent_span_id: %w", err)
+		}
+	}
 	return nil
 }
 
