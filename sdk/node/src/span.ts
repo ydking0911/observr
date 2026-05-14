@@ -72,7 +72,7 @@ export class Span {
           ...(this.parentSpanId !== undefined && { parent_span_id: this.parentSpanId }),
           message: this.name,
           duration_ms: durationMs,
-          attributes: this.attributes,
+          attributes: { ...this.attributes },
         });
       }
     });

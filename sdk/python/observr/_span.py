@@ -62,7 +62,10 @@ class Span:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         _active_span.reset(self._token)
-        self._emit(exc_type)
+        try:
+            self._emit(exc_type)
+        except Exception:
+            pass
         return False
 
     async def __aenter__(self) -> "Span":
