@@ -208,3 +208,27 @@ def test_manual_span(collector):
     assert event["attributes"]["table"] == "users"
     assert event["attributes"]["row_count"] == 42
     assert event["duration_ms"] >= 0
+
+
+def test_manual_span_with_parent_span_id(collector):
+    import sys
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("observr"):
+            del sys.modules[mod]
+
+    import observr
+    port = collector.server_address[1]
+    client = observr.init(
+        service="span-parent-test",
+        collector_url=f"http://127.0.0.1:{port}",
+        auto_instrument=False,
+    )
+
+    with client.span("child.op", parent_span_id="abc123parentspan") as span:
+        span.set_attribute("info", "value")
+
+    assert wait_for(lambda: any(
+        e.get("message") == "child.op" for e in _CollectorHandler.events
+    ))
+    event = next(e for e in _CollectorHandler.events if e.get("message") == "child.op")
+    assert event["parent_span_id"] == "abc123parentspan"
