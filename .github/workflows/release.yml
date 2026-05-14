@@ -3,10 +3,18 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"   # e.g. v0.1.0
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
   # ── Build dashboard first (embedded into binary) ──────────────────────
@@ -109,7 +117,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
-          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+          go build -ldflags="-s -w -X main.version=${{ env.RELEASE_TAG }}" \
             -o bin/${{ matrix.asset_name }} \
             ./cmd/observrd
 
@@ -143,33 +151,33 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          name: observr ${{ github.ref_name }}
+          name: observr ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           body: |
             ## Installation
 
             **macOS (Apple Silicon)**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/observrd-darwin-arm64 -o observrd
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/observrd-darwin-arm64 -o observrd
             chmod +x observrd && sudo mv observrd /usr/local/bin/
             observrd start
             ```
 
             **macOS (Intel)**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/observrd-darwin-amd64 -o observrd
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/observrd-darwin-amd64 -o observrd
             chmod +x observrd && sudo mv observrd /usr/local/bin/
             ```
 
             **Linux (amd64)**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/observrd-linux-amd64 -o observrd
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/observrd-linux-amd64 -o observrd
             chmod +x observrd && sudo mv observrd /usr/local/bin/
             ```
 
             **Python SDK**
             ```bash
-            pip install observr==${{ github.ref_name }}
+            pip install observr==${{ env.RELEASE_TAG }}
             ```
 
             ## Verify checksums
@@ -184,4 +192,4 @@ jobs:
             dist/observrd-windows-amd64.exe
             dist/SHA256SUMS.txt
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}  # v0.1.0-rc1 → prerelease
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}  # v0.1.0-rc1 → prerelease
