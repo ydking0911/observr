@@ -179,7 +179,7 @@ class ObservrClient:
     # Manual span API (for advanced use)
     # ------------------------------------------------------------------
 
-    def span(self, name: str, **attributes: object):
+    def span(self, name: str, parent_span_id: str | None = None, **attributes: object):
         """Context manager for manual spans."""
         from observr._span import Span
-        return Span(name=name, transport=self._transport, attributes=attributes)
+        return Span(name=name, transport=self._transport, attributes=attributes, parent_span_id=parent_span_id)

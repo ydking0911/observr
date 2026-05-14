@@ -321,6 +321,29 @@ func TestStatsSingleEvent(t *testing.T) {
 	}
 }
 
+func TestParentSpanIDRoundtrip(t *testing.T) {
+	s := newTestStore(t)
+
+	s.Insert([]storage.Event{{ //nolint:errcheck
+		Service:      "svc",
+		Timestamp:    time.Now().UTC(),
+		Type:         "span",
+		Level:        "info",
+		Message:      "child.op",
+		TraceID:      "trace-abc",
+		SpanID:       "span-child",
+		ParentSpanID: "span-parent",
+	}})
+
+	got, err := s.Query(storage.QueryFilter{Last: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].ParentSpanID != "span-parent" {
+		t.Errorf("ParentSpanID not preserved: got %q", got[0].ParentSpanID)
+	}
+}
+
 func TestVacuum(t *testing.T) {
 	s := newTestStore(t)
 

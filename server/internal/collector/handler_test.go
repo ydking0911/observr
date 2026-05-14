@@ -106,6 +106,27 @@ func TestHandlerPreservesAttributes(t *testing.T) {
 	}
 }
 
+func TestHandlerPreservesParentSpanID(t *testing.T) {
+	store := &mockStore{}
+	handler := collector.NewHandler(store)
+
+	postEvents(t, handler, map[string]any{
+		"events": []map[string]any{{
+			"service":        "api",
+			"type":           "span",
+			"level":          "info",
+			"message":        "child.op",
+			"trace_id":       "trace-abc",
+			"span_id":        "span-child",
+			"parent_span_id": "span-parent",
+		}},
+	})
+
+	if store.inserted[0].ParentSpanID != "span-parent" {
+		t.Errorf("ParentSpanID not passed through: got %q", store.inserted[0].ParentSpanID)
+	}
+}
+
 func TestHandlerEmptyBatch(t *testing.T) {
 	store := &mockStore{}
 	handler := collector.NewHandler(store)

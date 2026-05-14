@@ -5,6 +5,7 @@ export class Span {
   readonly name: string;
   readonly spanId: string;
   readonly traceId: string;
+  readonly parentSpanId: string | undefined;
   private readonly transport: Transport;
   private readonly attributes: Record<string, unknown>;
   private startTime = 0;
@@ -12,11 +13,13 @@ export class Span {
   constructor(
     name: string,
     transport: Transport,
-    attributes: Record<string, unknown> = {}
+    attributes: Record<string, unknown> = {},
+    parentSpanId?: string
   ) {
     this.name = name;
     this.spanId = randomBytes(8).toString("hex");
     this.traceId = randomBytes(16).toString("hex");
+    this.parentSpanId = parentSpanId;
     this.transport = transport;
     this.attributes = { ...attributes };
   }
@@ -49,6 +52,7 @@ export class Span {
         level,
         trace_id: this.traceId,
         span_id: this.spanId,
+        ...(this.parentSpanId !== undefined && { parent_span_id: this.parentSpanId }),
         message: this.name,
         duration_ms: durationMs,
         attributes: this.attributes,

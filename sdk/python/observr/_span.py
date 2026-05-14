@@ -21,10 +21,17 @@ class Span:
             span.set_attribute("row_count", len(rows))
     """
 
-    def __init__(self, name: str, transport: "Transport", attributes: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        name: str,
+        transport: "Transport",
+        attributes: dict[str, Any],
+        parent_span_id: str | None = None,
+    ) -> None:
         self.name = name
         self.span_id = secrets.token_hex(8)
         self.trace_id = secrets.token_hex(16)
+        self.parent_span_id = parent_span_id
         self._transport = transport
         self._attributes: dict[str, Any] = dict(attributes)
         self._start: float = 0.0
@@ -40,7 +47,7 @@ class Span:
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         duration_ms = (time.monotonic() - self._start) * 1000
 
-        event = {
+        event: dict[str, Any] = {
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "type": "span",
             "level": "error" if exc_type else "info",
@@ -50,6 +57,9 @@ class Span:
             "duration_ms": round(duration_ms, 2),
             "attributes": self._attributes,
         }
+
+        if self.parent_span_id is not None:
+            event["parent_span_id"] = self.parent_span_id
 
         if exc_type is not None:
             import traceback
