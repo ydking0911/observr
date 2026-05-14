@@ -41,19 +41,20 @@ func NewHandler(s store) http.Handler {
 
 // rawEvent mirrors the JSON shape sent by SDKs.
 type rawEvent struct {
-	ID         string         `json:"id"`
-	TraceID    string         `json:"trace_id"`
-	SpanID     string         `json:"span_id"`
-	Service    string         `json:"service"`
-	Timestamp  string         `json:"timestamp"`
-	Type       string         `json:"type"`
-	Level      string         `json:"level"`
-	Method     string         `json:"method"`
-	Path       string         `json:"path"`
-	StatusCode int            `json:"status_code"`
-	DurationMS float64        `json:"duration_ms"`
-	Message    string         `json:"message"`
-	Attributes map[string]any `json:"attributes"`
+	ID           string         `json:"id"`
+	TraceID      string         `json:"trace_id"`
+	SpanID       string         `json:"span_id"`
+	ParentSpanID string         `json:"parent_span_id"`
+	Service      string         `json:"service"`
+	Timestamp    string         `json:"timestamp"`
+	Type         string         `json:"type"`
+	Level        string         `json:"level"`
+	Method       string         `json:"method"`
+	Path         string         `json:"path"`
+	StatusCode   int            `json:"status_code"`
+	DurationMS   float64        `json:"duration_ms"`
+	Message      string         `json:"message"`
+	Attributes   map[string]any `json:"attributes"`
 }
 
 func (r rawEvent) toEvent() storage.Event {
@@ -68,18 +69,19 @@ func (r rawEvent) toEvent() storage.Event {
 		level = "info"
 	}
 	return storage.Event{
-		ID:         r.ID,
-		TraceID:    r.TraceID,
-		SpanID:     r.SpanID,
-		Service:    r.Service,
-		Timestamp:  ts,
-		Type:       r.Type,
-		Level:      level,
-		Method:     r.Method,
-		Path:       r.Path,
-		StatusCode: r.StatusCode,
-		DurationMS: r.DurationMS,
-		Message:    r.Message,
-		Attributes: r.Attributes,
+		ID:           r.ID,
+		TraceID:      r.TraceID,
+		SpanID:       r.SpanID,
+		ParentSpanID: r.ParentSpanID,
+		Service:      r.Service,
+		Timestamp:    ts,
+		Type:         r.Type,
+		Level:        level,
+		Method:       r.Method,
+		Path:         r.Path,
+		StatusCode:   r.StatusCode,
+		DurationMS:   r.DurationMS,
+		Message:      r.Message,
+		Attributes:   r.Attributes,
 	}
 }
