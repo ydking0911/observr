@@ -14,12 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Extract version from PR label
+      - name: Extract version from PR title
         id: version
         run: |
-          BARE=$(echo '${{ toJson(github.event.pull_request.labels.*.name) }}' \
-            | jq -r '.[] | select(test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
-            | sed 's/^v//' | head -1)
+          BARE=$(echo '${{ github.event.pull_request.title }}' \
+            | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^v//' | head -1)
           if [ -z "$BARE" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
