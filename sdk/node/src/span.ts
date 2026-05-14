@@ -26,9 +26,8 @@ export class Span {
 
     const active = _activeSpan.getStore();
     if (parentSpanId !== undefined) {
-      // Explicit override: starts a new independent trace
       this.parentSpanId = parentSpanId;
-      this.traceId = randomBytes(16).toString("hex");
+      this.traceId = active !== undefined ? active.traceId : randomBytes(16).toString("hex");
     } else if (active !== undefined) {
       // Auto-inherit from enclosing span
       this.parentSpanId = active.spanId;

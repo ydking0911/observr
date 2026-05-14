@@ -40,9 +40,8 @@ class Span:
 
         active = _active_span.get()
         if parent_span_id is not None:
-            # Explicit override: starts a new independent trace
             self.parent_span_id: str | None = parent_span_id
-            self.trace_id: str = secrets.token_hex(16)
+            self.trace_id: str = active.trace_id if active is not None else secrets.token_hex(16)
         elif active is not None:
             # Auto-inherit from enclosing span
             self.parent_span_id = active.span_id

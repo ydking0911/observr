@@ -96,15 +96,23 @@ describe("Span context propagation", () => {
 
   // ── Explicit override ──────────────────────────────────────────────────────
 
-  it("explicit parentSpanId overrides context and generates new traceId", async () => {
+  it("explicit parentSpanId overrides parent link but inherits traceId from active context", async () => {
     const outer = new Span("outer", transport);
     await outer.run(async () => {
       const override = new Span("override", transport, {}, "explicit-parent-id");
       await override.run(async () => undefined);
 
       expect(override.parentSpanId).toBe("explicit-parent-id");
-      expect(override.traceId).not.toBe(outer.traceId);
+      expect(override.traceId).toBe(outer.traceId);
     });
+  });
+
+  it("explicit parentSpanId with no active context generates new traceId", async () => {
+    const standalone = new Span("standalone", transport, {}, "explicit-parent-id");
+    await standalone.run(async () => undefined);
+
+    expect(standalone.parentSpanId).toBe("explicit-parent-id");
+    expect(standalone.traceId).toBeTruthy();
   });
 
   // ── Parallel isolation ─────────────────────────────────────────────────────

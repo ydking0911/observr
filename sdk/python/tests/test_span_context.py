@@ -77,12 +77,18 @@ def test_context_none_after_root_exits(transport):
 
 # ── Explicit override ──────────────────────────────────────────────────────────
 
-def test_explicit_override_ignores_context(transport):
+def test_explicit_override_uses_parent_id_and_inherits_trace(transport):
     with Span("outer", transport, {}) as outer:
         child = Span("child", transport, {}, parent_span_id="explicit-parent-id")
         assert child.parent_span_id == "explicit-parent-id"
-        # Explicit override starts a new trace, not inheriting outer's trace_id
-        assert child.trace_id != outer.trace_id
+        # Explicit override inside an active context inherits that context's trace_id
+        assert child.trace_id == outer.trace_id
+
+
+def test_explicit_override_without_context_generates_new_trace(transport):
+    child = Span("child", transport, {}, parent_span_id="explicit-parent-id")
+    assert child.parent_span_id == "explicit-parent-id"
+    assert child.trace_id is not None
 
 
 # ── Async context manager ─────────────────────────────────────────────────────
