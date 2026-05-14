@@ -117,6 +117,24 @@ with observr.get_client().span("db.query", table="users") as span:
     span.set_attribute("row_count", len(rows))
 ```
 
+**Nested spans (causal tracing):**
+```python
+# Pass parent_span_id to link child spans into a causal tree
+with observr.get_client().span("agent.decide") as parent:
+    with observr.get_client().span("tool.call", parent_span_id=parent.span_id, tool="web_search") as child:
+        results = web_search("observability best practices")
+        child.set_attribute("result_count", len(results))
+```
+
+```ts
+// Node.js
+const parent = new Span("agent.decide", transport);
+await parent.run(async (p) => {
+  const child = new Span("tool.call", transport, { tool: "web_search" }, p.spanId);
+  await child.run(async () => { ... });
+});
+```
+
 ### 4. Query from your AI agent
 
 ```bash
@@ -188,6 +206,7 @@ observr.init(
   "id": "evt_1711234567890",
   "trace_id": "4f2a1b3c8e9d0f1a",
   "span_id": "a1b2c3d4",
+  "parent_span_id": "9f8e7d6c",
   "service": "my-api",
   "timestamp": "2026-03-24T12:34:56.789Z",
   "type": "http_request",
@@ -203,6 +222,8 @@ observr.init(
   }
 }
 ```
+
+`parent_span_id` is optional. When set, it links this span to its parent, enabling causality tree reconstruction across nested agent actions.
 
 ---
 
