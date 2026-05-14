@@ -4,6 +4,7 @@ export interface ObservrEvent {
   level: "debug" | "info" | "warn" | "error";
   trace_id?: string;
   span_id?: string;
+  parent_span_id?: string;
   message: string;
   service?: string;
   duration_ms?: number;

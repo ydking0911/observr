@@ -55,6 +55,22 @@ describe("Span", () => {
     expect(event.attributes?.cached).toBe(true);
   });
 
+  it("includes parent_span_id in emitted event when provided", async () => {
+    const span = new Span("child.op", transport, {}, "parent-span-hex-123");
+    await span.run(async () => undefined);
+
+    const event = sendSpy.mock.calls[0][0];
+    expect(event.parent_span_id).toBe("parent-span-hex-123");
+  });
+
+  it("omits parent_span_id from emitted event when not provided", async () => {
+    const span = new Span("standalone.op", transport);
+    await span.run(async () => undefined);
+
+    const event = sendSpy.mock.calls[0][0];
+    expect(event.parent_span_id).toBeUndefined();
+  });
+
   it("generates unique trace_id and span_id", async () => {
     const ids = new Set<string>();
     for (let i = 0; i < 5; i++) {
