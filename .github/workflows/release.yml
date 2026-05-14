@@ -140,29 +140,12 @@ jobs:
         working-directory: dist
         run: sha256sum observrd-* > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: Extract changelog section
-        id: changelog
-        run: |
-          VERSION="${{ github.ref_name }}"
-          # Extract section between this tag and the previous one from CHANGELOG if it exists
-          if [ -f CHANGELOG.md ]; then
-            NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag{print}" CHANGELOG.md)
-          else
-            NOTES="See [README](README.md) for usage and setup."
-          fi
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           name: observr ${{ github.ref_name }}
+          generate_release_notes: true
           body: |
-            ## observr ${{ github.ref_name }}
-
-            ${{ steps.changelog.outputs.notes }}
-
             ## Installation
 
             **macOS (Apple Silicon)**
