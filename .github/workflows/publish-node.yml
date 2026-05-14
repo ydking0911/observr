@@ -9,6 +9,8 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +24,11 @@ jobs:
         working-directory: sdk/node
 
       - name: Set version from tag
-        run: npm version ${GITHUB_REF_NAME#v} --no-git-tag-version
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          npm version "$VERSION" --no-git-tag-version
         working-directory: sdk/node
 
       - name: Type-check
@@ -47,6 +53,9 @@ jobs:
     name: Publish to npm
     needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@ydking0911/observr/v/${{ needs.build.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4

@@ -9,6 +9,8 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,8 +22,11 @@ jobs:
         run: python -m pip install build
 
       - name: Set version from tag
+        id: ver
         run: |
-          sed -i "s/^version = .*/version = \"${GITHUB_REF_NAME#v}\"/" pyproject.toml
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
         working-directory: sdk/python
 
       - name: Build wheel and sdist
@@ -40,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/observr
+      url: https://pypi.org/project/observr/${{ needs.build.outputs.version }}/
     permissions:
       id-token: write  # required for trusted publishing
 
