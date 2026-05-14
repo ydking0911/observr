@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 env:
   RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -194,3 +195,13 @@ jobs:
             dist/SHA256SUMS.txt
           draft: false
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}  # v0.1.0-rc1 → prerelease
+
+      - name: Dispatch Python publish
+        run: gh workflow run publish-py.yml --field tag=${{ env.RELEASE_TAG }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch Node.js publish
+        run: gh workflow run publish-node.yml --field tag=${{ env.RELEASE_TAG }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
