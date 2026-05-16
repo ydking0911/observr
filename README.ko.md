@@ -18,7 +18,7 @@
   <a href="https://github.com/ydking0911/observr/actions/workflows/ci.yml"><img src="https://github.com/ydking0911/observr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/observr/"><img src="https://img.shields.io/pypi/v/observr?color=blue" alt="PyPI"></a>
   <a href="https://www.npmjs.com/package/@ydking0911/observr"><img src="https://img.shields.io/npm/v/@ydking0911/observr" alt="npm"></a>
-  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/ydking0911/observr" alt="Go"></a>
+  <a href="server/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/ydking0911/observr?filename=server%2Fgo.mod" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
