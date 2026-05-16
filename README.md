@@ -1,129 +1,88 @@
-# observr
+<p align="right">
+  <strong>English</strong> | <a href="./README.ko.md">한국어</a>
+</p>
 
-> Zero-config observability for local & on-prem services — built for AI agents.
+<p align="center">
+  <br/>
+  <img src="./docs/images/observr.png" width="280" alt="observr">
+  <br/>
+</p>
+
+<p align="center">
+  <strong>Your AI agent acted. But why?</strong>
+  <br/>
+  <sub>Audit trail and causal attribution for AI agents — one line to instrument</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/ydking0911/observr/actions/workflows/ci.yml"><img src="https://github.com/ydking0911/observr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/observr/"><img src="https://img.shields.io/pypi/v/observr?color=blue" alt="PyPI"></a>
+  <a href="https://www.npmjs.com/package/@ydking0911/observr"><img src="https://img.shields.io/npm/v/@ydking0911/observr" alt="npm"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/ydking0911/observr" alt="Go"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
+
+<p align="center">
+  <a href="#the-problem">Problem</a> ·
+  <a href="#why-observr">Why</a> ·
+  <a href="#core-concepts">Concepts</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#query-the-audit-log">Query</a> ·
+  <a href="#roadmap">Roadmap</a>
+</p>
 
 ```python
 import observr
-observr.init(service="my-api")  # HTTP tracing + structured logs + live dashboard. Done.
+observr.init(service="my-agent")
+# Every action this agent takes is now recorded and traceable.
 ```
+
+---
+
+## The Problem
+
+- Your AI agent did something unexpected — you don't know **which decision caused it**
+- Three agents are chained together — you can't tell **where the failure started**
+- Claude Code or Cursor made a tool call — you want to **review it after the fact**
+- An agent threw an error — you need to know **what prior action led to it**
+
+observr answers these questions.
 
 ---
 
 ## Why observr?
 
-| | Datadog / Grafana | OpenTelemetry | **observr** |
-|---|---|---|---|
-| Setup | Very complex | Complex | **1 line** |
-| Local / on-prem | Paid | Self-host required | **Default** |
-| AI agent friendly | No | No | **Designed for it** |
-| Browser dashboard | Separate install | None | **Auto-opens** |
-| Cost | Expensive | Free but complex | **Free & open-source** |
-
-Most observability tools are built for ops teams managing cloud infrastructure. **observr is built for developers** — and for the AI agents that help them.
+|  | DIY Logging | Datadog / Grafana | **observr** |
+|--|:-----------:|:-----------------:|:-----------:|
+| Agent causal chain | Manual | ✗ | **Automatic** |
+| Decision traceback | Manual | ✗ | **Built-in** |
+| Behavioral patterns | Manual | Partial | **Built-in** |
+| Setup complexity | High | Very high | **1 line** |
+| Local / on-prem | Manual | Paid | **Default** |
+| AI agent native | ✗ | ✗ | **Designed for it** |
+| Cost | Dev time | Expensive | **Free & open-source** |
 
 ---
 
-## Quickstart
+## Core Concepts
 
-### 1. Start the collector
+<details>
+<summary><strong>Causal Attribution — trace any outcome back to its root</strong></summary>
 
-**macOS / Linux (recommended)**
-```bash
-curl -sSL https://raw.githubusercontent.com/ydking0911/observr/main/scripts/install.sh | sh
-observrd   # → http://localhost:7676 (opens automatically)
-```
+Every span can carry a `parent_span_id` that links it to the action that triggered it. observr reconstructs the full decision tree.
 
-**Homebrew**
-```bash
-brew tap ydking0911/observr
-brew install observr
-```
-
-**go install**
-```bash
-go install github.com/ydking0911/observr/server/cmd/observrd@latest
-```
-
-**Build from source**
-```bash
-git clone https://github.com/ydking0911/observr
-cd observr && make build
-./server/bin/observrd
-```
-
-### 2. Install the SDK
-
-**Python**
-```bash
-pip install observr
-```
-
-**Node.js**
-```bash
-npm install @ydking0911/observr
-```
-
-### 3. Instrument your app
-
-**Python — FastAPI**
 ```python
-from fastapi import FastAPI
-import observr
-
-observr.init(service="my-api")  # auto-detects FastAPI
-app = FastAPI()
-
-@app.get("/users")
-async def get_users():
-    return {"users": []}
-```
-
-**Python — Flask**
-```python
-from flask import Flask
-import observr
-
-observr.init(service="my-api")  # auto-detects Flask
-app = Flask(__name__)
-
-@app.route("/users")
-def get_users():
-    return {"users": []}
-```
-
-**Node.js — Express**
-```js
-const express = require('express')
-const { init } = require('@ydking0911/observr')
-
-init({ service: 'my-api' })  // auto-instruments Express
-const app = express()
-
-app.get('/users', (req, res) => res.json({ users: [] }))
-```
-
-**Logs are captured automatically:**
-```python
-import logging
-logger = logging.getLogger(__name__)
-logger.error("Payment failed", extra={"user_id": "u_123", "amount": 9900})
-# → Appears in dashboard + queryable via CLI
-```
-
-**Manual spans:**
-```python
-with observr.get_client().span("db.query", table="users") as span:
-    rows = db.execute("SELECT ...")
-    span.set_attribute("row_count", len(rows))
-```
-
-**Nested spans (causal tracing):**
-```python
-# Pass parent_span_id to link child spans into a causal tree
 with observr.get_client().span("agent.decide") as parent:
     with observr.get_client().span("tool.call", parent_span_id=parent.span_id, tool="web_search") as child:
-        results = web_search("observability best practices")
+        results = web_search("relevant context")
         child.set_attribute("result_count", len(results))
+```
+
+```
+trace_id: 4f2a1b3c
+├── agent.decide   (a1b2)
+│   ├── tool.call  (c3d4, parent: a1b2)  ← triggered by agent.decide
+│   └── db.query   (g7h8, parent: a1b2)
 ```
 
 ```ts
@@ -131,42 +90,122 @@ with observr.get_client().span("agent.decide") as parent:
 const parent = new Span("agent.decide", transport);
 await parent.run(async (p) => {
   const child = new Span("tool.call", transport, { tool: "web_search" }, p.spanId);
-  await child.run(async () => { ... });
+  await child.run(async () => { /* causally linked */ });
 });
 ```
 
-### 4. Query from your AI agent
+</details>
+
+<details>
+<summary><strong>Behavioral Patterns — signal over noise</strong></summary>
+
+observr normalizes event messages and groups similar ones by fingerprint.
+
+`"Payment failed for user abc123"` and `"Payment failed for user xyz789"` collapse into the same pattern — so you see **frequency over time**, not noise.
+
+</details>
+
+<details>
+<summary><strong>Audit Log — local, queryable, persistent</strong></summary>
+
+All events are stored locally in SQLite (WAL mode) with full timestamps, service attribution, and structured attributes.
+
+Queryable by: level · service · trace ID · time range · HTTP path
+
+</details>
+
+---
+
+## Quickstart
+
+### 1. Start the collector
+
+**macOS / Linux**
+```bash
+curl -sSL https://raw.githubusercontent.com/ydking0911/observr/main/scripts/install.sh | sh
+observrd   # → http://localhost:7676
+```
+
+**Homebrew**
+```bash
+brew tap ydking0911/observr && brew install observr
+```
+
+**go install**
+```bash
+go install github.com/ydking0911/observr/server/cmd/observrd@latest
+```
+
+### 2. Install the SDK
 
 ```bash
-# Recent errors as JSON (for Claude Code, Cursor, etc.)
-observrd query --level error --last 100
+pip install observr               # Python
+npm install @ydking0911/observr   # Node.js
+```
 
-# Filter by HTTP path
-observrd query --path /checkout --format json
+### 3. Instrument your agent
 
-# Export to CSV
-observrd query --level error --last 1000 --format csv > errors.csv
+**Python — FastAPI / Flask / Django**
+```python
+import observr
+observr.init(service="my-agent")  # auto-detects the framework
+```
 
-# Follow a specific trace
+**Node.js — Express**
+```js
+const { init } = require('@ydking0911/observr')
+init({ service: 'my-agent' })
+```
+
+**Manual spans for agent actions:**
+```python
+with observr.get_client().span("db.query", table="users") as span:
+    rows = db.execute("SELECT ...")
+    span.set_attribute("row_count", len(rows))
+```
+
+**Logs are captured automatically:**
+```python
+import logging
+logger = logging.getLogger(__name__)
+logger.error("Payment failed", extra={"user_id": "u_123", "amount": 9900})
+```
+
+---
+
+## Query the Audit Log
+
+```bash
+# Recent errors as JSON
+observrd query --level error --last 100 --format json
+
+# All actions from a specific agent
+observrd query --service my-agent --last 500 --format json
+
+# Trace a full decision tree
 observrd query --trace-id 4f2a1b3c
 
-# Plain-text table
+# Export for review
+observrd query --level error --last 10000 --format csv > audit.csv
+
+# Human-readable table
 observrd query --format text
 ```
 
-Example (Claude Code):
+**Example — an AI agent auditing itself:**
 ```
-User: Why is the /checkout endpoint slow?
-Claude: Let me check the traces...
-$ observrd query --path /checkout --last 50 --format json
-→ p99 latency: 3200ms, bottleneck: db.query at checkout.py:142
+User: What errors did the agent produce in the last hour?
+Claude: Let me pull the audit trail...
+$ observrd query --service my-agent --level error --last 200 --format json
+→ 3 errors, all traced to span "tool.call" → parent "agent.decide" at 14:32:01
+→ Root cause: agent.decide passed malformed input to tool.call
 ```
 
 ---
 
 ## Alerts
 
-Send Slack or Discord notifications when errors exceed a threshold:
+Fire Slack or Discord notifications when error thresholds are exceeded:
 
 ```bash
 observrd start \
@@ -178,102 +217,61 @@ observrd start \
   --alert-cooldown    5m
 ```
 
-Alerts fire when **≥ threshold** matching events occur within **window**, with a **cooldown** between consecutive alerts.
-
 ---
 
-## Configuration
-
-```python
-observr.init(
-    service="my-api",                          # service name in dashboard
-    collector_url="http://localhost:7676",      # default
-    auto_instrument=True,                      # auto-detect Flask / FastAPI
-    log_level="DEBUG",                         # minimum log level to capture
-)
-```
-
----
-
-## Architecture
-
-![observr architecture](docs/observrd_arch.svg)
-
-### Event Schema
+## Event Schema
 
 ```json
 {
-  "id": "evt_1711234567890",
-  "trace_id": "4f2a1b3c8e9d0f1a",
-  "span_id": "a1b2c3d4",
+  "id":             "evt_1711234567890",
+  "trace_id":       "4f2a1b3c8e9d0f1a",
+  "span_id":        "a1b2c3d4",
   "parent_span_id": "9f8e7d6c",
-  "service": "my-api",
-  "timestamp": "2026-03-24T12:34:56.789Z",
-  "type": "http_request",
-  "level": "error",
-  "method": "POST",
-  "path": "/checkout",
-  "status_code": 500,
-  "duration_ms": 3241.5,
-  "message": "POST /checkout",
+  "service":        "my-agent",
+  "timestamp":      "2026-03-24T12:34:56.789Z",
+  "type":           "span",
+  "level":          "error",
+  "duration_ms":    3241.5,
+  "message":        "tool.call failed",
   "attributes": {
-    "query_string": "",
-    "client": ["127.0.0.1", 54321]
+    "tool":  "web_search",
+    "error": "timeout after 3000ms"
   }
 }
 ```
 
-`parent_span_id` is optional. When set, it links this span to its parent, enabling causality tree reconstruction across nested agent actions.
-
----
-
-## Development
-
-```bash
-# Build everything (dashboard embedded into binary)
-make build
-
-# Run server in dev mode
-make dev-server      # Go server on :7676
-make dev-dashboard   # Vite dev server on :5173 (proxies to :7676)
-
-# Tests
-make test            # Go + Python + Node.js
-make test-e2e        # Full end-to-end test
-
-# Lint
-make lint
-```
+`parent_span_id` links a span to its causal parent, enabling full decision tree reconstruction.
 
 ---
 
 ## Roadmap
 
 | Version | Status | Features |
-|---------|--------|----------|
-| **v0.1** | ✅ Done | Python SDK · Go collector · React dashboard · CLI · CI/CD |
-| **v0.2** | ✅ Done | Node.js SDK · PyPI publish · npm publish |
-| **v0.3** | ✅ Done | Slack/Discord alerts · Event retention (TTL) · JSON/CSV export |
-| v0.4 | Planned | AI auto-analysis · Multi-service tracing · Go SDK |
+|---------|:------:|----------|
+| **v0.1** | ✅ | Python SDK · Go collector · React dashboard · CLI · CI/CD |
+| **v0.2** | ✅ | Node.js SDK · PyPI publish · npm publish |
+| **v0.3** | ✅ | Slack/Discord alerts · Event retention (TTL) · JSON/CSV export |
+| **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Fastify support |
+| **v0.5** | 📋 | Audit report generation · Causal chain export · Multi-agent tracing |
+| **v0.6** | 📋 | Go SDK · Policy rule engine · On-chain anchoring |
 
 ---
 
-## Directory Structure
+## Development
 
+```bash
+make build          # build everything (dashboard embedded into binary)
+make dev-server     # Go server on :7676
+make dev-dashboard  # Vite dev server on :5173 (proxies to :7676)
+make test           # Go + Python + Node.js
+make test-e2e       # full end-to-end test
+make lint
 ```
-observr/
-├── sdk/python/          # Python SDK (zero dependencies)
-├── sdk/node/            # Node.js SDK (TypeScript, ESM + CJS)
-├── server/              # Go collector binary (observrd)
-│   ├── cmd/observrd/    # main + CLI subcommands
-│   └── internal/        # collector, storage, query, dashboard, webhook
-├── dashboard/           # Vite + React dashboard (embedded into binary)
-├── scripts/             # e2e test script
-└── docs/                # Architecture notes
-```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ---
 
-## License
-
-MIT — see [LICENSE](LICENSE)
+<p align="center">
+  <sub>MIT License · <a href="LICENSE">LICENSE</a></sub>
+</p>
