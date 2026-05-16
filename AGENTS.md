@@ -6,12 +6,18 @@ Guidance for AI coding agents (Codex, Claude, Cursor, Devin, etc.) working in th
 
 ## Project at a Glance
 
-observr is a **zero-config local observability stack** composed of:
+observr is an **open-source audit trail and accountability layer for AI agents**. It captures every agent action, tool call, and log event with full causal attribution, stores them in an immutable local audit log, and exposes them for querying, alerting, and compliance export.
 
-- **`observrd`** — Go 1.22 daemon. Receives events via HTTP, stores in SQLite, streams via WebSocket (dashboard) and SSE (`tail` CLI).
+**Strategic direction**: developer-first open source — make it easy for developers building AI agents to naturally adopt audit features, understand what their agent did and why, and contribute back to the project.
+
+Components:
+
+- **`observrd`** — Go 1.22 daemon. Receives events via HTTP, stores in SQLite (WAL), streams via WebSocket (dashboard) and SSE (`tail` CLI). Runs a `multiBroadcaster` that fans out to dashboard, SSE, and webhook alerter — new audit sinks plug in here.
 - **Python SDK** — `pip install observr`. Auto-instruments Flask, FastAPI, Django. Lazy import hook via `builtins.__import__` override.
 - **Node.js SDK** — `npm install @ydking0911/observr`. Auto-instruments Express. Console patch. Manual spans via async `.run()`.
-- **React dashboard** — Vite SPA embedded in the `observrd` binary.
+- **React dashboard** — Vite SPA embedded in the `observrd` binary. Real-time audit event browser.
+- **Patterns engine** (`server/internal/patterns/`) — fingerprints normalized event messages to group behavioral patterns across time.
+- **Webhook alerter** (`server/internal/webhook/`) — fires Slack/Discord alerts on threshold violations. Acts as a policy enforcement hook.
 
 ---
 
@@ -79,22 +85,30 @@ The HTTP server sets `WriteTimeout: 0` (no timeout). This is intentional because
 ### CGO requirement
 The Go server uses `mattn/go-sqlite3` which requires CGO. Always build with `CGO_ENABLED=1`. CI installs `gcc libc-dev` on Ubuntu. Do not attempt a CGO-free build.
 
+### `Broadcaster` interface is the audit sink extension point
+New audit outputs (on-chain anchoring, compliance exporters, SIEM integrations) must implement `storage.Broadcaster` and be wired into the `multiBroadcaster` in `main.go`. Never bypass this interface by reading from SQLite directly in a goroutine.
+
+### Patterns engine normalises before fingerprinting
+`patterns.Normalize()` replaces UUIDs, IPs, hex strings, and numbers with placeholders before grouping. This is intentional — it makes behaviorally identical events group together even when IDs differ. Do not change the normalization order (UUID must precede hex to avoid partial replacement of UUID segments).
+
 ---
 
 ## File Ownership Map
 
 | Path | Owner | Notes |
 |------|-------|-------|
-| `server/cmd/observrd/main.go` | Go | Subcommand dispatch, SSE+WS broadcaster wiring |
+| `server/cmd/observrd/main.go` | Go | Subcommand dispatch, SSE+WS+webhook broadcaster wiring |
 | `server/internal/storage/store.go` | Go | Single source of truth for DB schema and `Broadcaster` interface |
 | `server/internal/tail/tail.go` | Go | SSE hub; filters on level/service/type |
 | `server/internal/dashboard/hub.go` | Go | WebSocket hub; `all:dist` embed |
+| `server/internal/patterns/patterns.go` | Go | Behavioral fingerprinting — normalise + group events |
+| `server/internal/webhook/alerter.go` | Go | Policy enforcement broadcaster; Slack/Discord alerts |
 | `sdk/python/observr/_client.py` | Python | Lazy import hook, lifecycle, framework dispatch |
 | `sdk/python/observr/_transport.py` | Python | Background thread, queue, HTTP POST |
 | `sdk/python/observr/integrations/fastapi.py` | Python | Patches `fastapi.FastAPI.__init__` |
 | `sdk/python/observr/integrations/django.py` | Python | WSGI middleware; `_get_transport()` fallback |
 | `sdk/node/src/transport.ts` | TypeScript | `fetch` + `AbortSignal.timeout`, `unref()` timer |
-| `sdk/node/src/span.ts` | TypeScript | Async span, error capture |
+| `sdk/node/src/span.ts` | TypeScript | Async span, error capture; carries `parent_span_id` for causal chain |
 | `.github/workflows/ci.yml` | CI | All language test matrix |
 | `.github/workflows/publish-py.yml` | CI | PyPI OIDC trusted publishing |
 | `.github/workflows/publish-node.yml` | CI | npm publish |
