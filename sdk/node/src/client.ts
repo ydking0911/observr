@@ -33,6 +33,34 @@ export class ObservrClient {
     return new Span(name, this.transport, attributes);
   }
 
+  /**
+   * Span for agent actions with standard attribute keys.
+   *
+   * Standard keys (omitted when undefined):
+   *   agent.intent   — goal the agent is working toward
+   *   agent.trigger  — what caused this action (user_message | tool_result | <span_id>)
+   *   agent.model    — LLM that made the decision
+   *   agent.tool     — tool being invoked
+   */
+  agentSpan(
+    name: string,
+    options: {
+      intent?: string;
+      trigger?: string;
+      model?: string;
+      tool?: string;
+      [key: string]: unknown;
+    } = {}
+  ): Span {
+    const { intent, trigger, model, tool, ...extra } = options;
+    const attributes: Record<string, unknown> = { ...extra };
+    if (intent !== undefined) attributes["agent.intent"] = intent;
+    if (trigger !== undefined) attributes["agent.trigger"] = trigger;
+    if (model !== undefined) attributes["agent.model"] = model;
+    if (tool !== undefined) attributes["agent.tool"] = tool;
+    return new Span(name, this.transport, attributes);
+  }
+
   async shutdown(): Promise<void> {
     unpatchConsole();
     await this.transport.shutdown();
