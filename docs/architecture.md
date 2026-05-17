@@ -96,15 +96,17 @@ Query the full tree: `observrd query --trace-id 4f2a1b3c --format json`
 ```
 sdk/python/observr/
 ├── __init__.py          init(), get_client()
-├── _client.py           ObservrClient — lazy import hook, lifecycle, framework dispatch
+├── _client.py           ObservrClient — lazy import hook, lifecycle, span(), agent_span()
 ├── _transport.py        Background thread, 10k queue, HTTP batch POST
 ├── _logger.py           logging.Handler — captures all log records
-├── _span.py             Manual span context manager; carries parent_span_id
+├── _span.py             Manual span context manager; carries parent_span_id via ContextVar
 └── integrations/
     ├── flask.py         before_request / after_request hooks
     ├── fastapi.py       ASGI middleware, monkey-patches FastAPI.__init__
     └── django.py        WSGI middleware
 ```
+
+`agent_span(name, *, intent, trigger, model, tool, **extra)` — thin wrapper over `span()` that pre-populates standard agent attribute keys. Keys are omitted when `None`; extra kwargs pass through as arbitrary attributes.
 
 ### SDK (Node.js)
 
@@ -113,10 +115,13 @@ sdk/node/src/
 ├── index.ts        Public API — init(), Span
 ├── transport.ts    fetch() + AbortSignal.timeout(3000), unref() timer
 ├── span.ts         Async span: new Span(name, transport, attrs, parentSpanId)
+├── client.ts       ObservrClient — span(), agentSpan()
 ├── logger.ts       console.log/warn/error patch
 └── integrations/
     └── express.ts  Express middleware
 ```
+
+`agentSpan(name, { intent?, trigger?, model?, tool?, ...extra })` — same contract as Python's `agent_span()`. Destructures standard keys, passes remainder as arbitrary attributes.
 
 ### Collector Server (Go)
 
@@ -211,18 +216,24 @@ CREATE TABLE events (
 
 ```
 dashboard/src/
-├── App.tsx               Layout, stats computation, filter state
-├── types.ts              ObservrEvent, Stats interfaces
+├── App.tsx               Layout, stats computation, filter + trace state
+├── types.ts              ObservrEvent (incl. parent_span_id), Stats, Pattern
 ├── hooks/
-│   └── useEventStream.ts WebSocket + HTTP initial load
+│   ├── useEventStream.ts WebSocket + HTTP initial load
+│   ├── usePatterns.ts    Polled pattern fetch (/patterns)
+│   └── useTraceEvents.ts Fetch all spans for a trace_id (/query?trace_id=…)
 └── components/
     ├── MetricCard.tsx     p50/p99/RPS/error count cards
-    ├── FilterBar.tsx      Level tabs + search input
-    ├── EventTable.tsx     Audit event list with click-to-expand
-    ├── EventDetail.tsx    Slide-in detail panel (shows causal chain)
+    ├── FilterBar.tsx      Level tabs + search input + export
+    ├── EventTable.tsx     Audit event list; trace chip opens TracePanel
+    ├── EventDetail.tsx    Slide-in detail panel (raw event attributes)
+    ├── TracePanel.tsx     Causality tree: waterfall + agent attribute badges
+    ├── PatternCard.tsx    Behavioral pattern summary card
     ├── LevelBadge.tsx     ERROR / WARN / INFO / DEBUG pill
     └── StatusDot.tsx      Live / Disconnected indicator
 ```
+
+**TracePanel** builds a tree from `parent_span_id → span_id` links and renders a waterfall: each span's bar starts at `timestamp - duration_ms` (SDK emits at completion) and is proportional to the trace total duration. Agent attribute badges (`intent`, `trigger`, `model`, `tool`) appear below each span row.
 
 ---
 
@@ -241,9 +252,11 @@ dashboard/src/
 
 ---
 
-## Roadmap: Planned Audit Features
+## Roadmap: Audit Features
 
-| Version | Features |
-|---------|----------|
-| **v0.5** | Audit report generation · Accountability chain export (full trace tree as JSON) · Multi-agent tracing |
-| **v0.6** | Compliance export (EU AI Act / SOC2) · Policy rule engine · On-chain anchoring (`blockchain.Anchorer` via `Broadcaster`) |
+| Version | Status | Features |
+|---------|:------:|----------|
+| **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Django / Fastify support |
+| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view (TracePanel waterfall) |
+| **v0.6** | 📋 | Audit report generation · Accountability chain export (full trace tree as JSON-LD) · Policy rule engine |
+| **v0.7** | 📋 | Compliance export (EU AI Act / SOC2) · On-chain anchoring (`blockchain.Anchorer` via `Broadcaster`) · Go SDK |

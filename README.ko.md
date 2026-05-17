@@ -69,30 +69,33 @@ observr는 이 질문들에 답하는 도구입니다.
 <details>
 <summary><strong>인과 귀속 — 모든 결과를 근본 원인까지 역추적</strong></summary>
 
-모든 span은 자신을 트리거한 부모 행동을 가리키는 `parent_span_id`를 가질 수 있습니다. observr는 이를 바탕으로 전체 결정 트리를 재구성합니다.
+모든 span은 `parent_span_id`로 트리거한 부모 행동을 연결합니다. `agent_span()` / `agentSpan()`을 사용하면 표준 관찰 속성(`intent`, `trigger`, `model`, `tool`)을 자동으로 기록하고, 중첩 시 인과 체인이 자동으로 이어집니다.
 
 ```python
-with observr.get_client().span("agent.decide") as parent:
-    with observr.get_client().span("tool.call", parent_span_id=parent.span_id, tool="web_search") as child:
+# Python — 중첩 시 parent_span_id 자동 전파
+client = observr.get_client()
+with client.agent_span("agent.decide", intent="사용자 질문 답변", model="claude-sonnet-4-6") as root:
+    with client.agent_span("tool.call", trigger=root.span_id, tool="web_search") as child:
         results = web_search("relevant context")
         child.set_attribute("result_count", len(results))
 ```
 
 ```
 trace_id: 4f2a1b3c
-├── agent.decide   (a1b2)
-│   ├── tool.call  (c3d4, parent: a1b2)  ← agent.decide가 트리거
-│   └── db.query   (g7h8, parent: a1b2)
+├── agent.decide   (a1b2)  intent="사용자 질문 답변"  model="claude-sonnet-4-6"
+│   └── tool.call  (c3d4, parent: a1b2)  tool="web_search"  result_count=12
 ```
 
 ```ts
 // Node.js
-const parent = new Span("agent.decide", transport);
-await parent.run(async (p) => {
-  const child = new Span("tool.call", transport, { tool: "web_search" }, p.spanId);
-  await child.run(async () => { /* 인과적으로 연결됨 */ });
-});
+await client.agentSpan("agent.decide", { intent: "사용자 질문 답변", model: "claude-sonnet-4-6" })
+  .run(async (root) => {
+    await client.agentSpan("tool.call", { trigger: root.spanId, tool: "web_search" })
+      .run(async () => { /* parent_span_id 자동 설정 */ });
+  });
 ```
+
+대시보드의 **trace 칩**을 클릭하면 인과 트리가 열립니다 — 모든 span의 실행 시간, 에이전트 속성을 waterfall로 시각화합니다.
 
 </details>
 
@@ -157,11 +160,12 @@ const { init } = require('@ydking0911/observr')
 init({ service: 'my-agent' })
 ```
 
-**에이전트 행동 단위로 수동 span:**
+**에이전트 span — 표준 속성으로 인과 체인 기록:**
 ```python
-with observr.get_client().span("db.query", table="users") as span:
-    rows = db.execute("SELECT ...")
-    span.set_attribute("row_count", len(rows))
+client = observr.get_client()
+with client.agent_span("tool.call", intent="최신 논문 검색", tool="web_search") as span:
+    results = web_search("observability 2026")
+    span.set_attribute("result_count", len(results))
 ```
 
 **로그는 자동으로 수집됩니다:**
@@ -252,8 +256,9 @@ observrd start \
 | **v0.2** | ✅ | Node.js SDK · PyPI 배포 · npm 배포 |
 | **v0.3** | ✅ | Slack/Discord 알림 · 이벤트 보존 정책(TTL) · JSON/CSV 내보내기 |
 | **v0.4** | ✅ | 인과 귀속 (`parent_span_id`) · 행동 패턴 감지 · Fastify 지원 |
-| **v0.5** | 📋 | 감사 리포트 생성 · 인과 체인 내보내기 · 멀티 에이전트 트레이싱 |
-| **v0.6** | 📋 | Go SDK · 정책 규칙 엔진 · 온체인 앵커링 |
+| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` 헬퍼 · 대시보드 인과 트리 뷰 · Django 지원 |
+| **v0.6** | 📋 | 감사 리포트 생성 · 인과 체인 내보내기 (JSON-LD) · 정책 규칙 엔진 |
+| **v0.7** | 📋 | Go SDK · 온체인 앵커링 · 멀티 에이전트 트레이싱 |
 
 ---
 

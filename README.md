@@ -69,30 +69,33 @@ observr answers these questions.
 <details>
 <summary><strong>Causal Attribution — trace any outcome back to its root</strong></summary>
 
-Every span can carry a `parent_span_id` that links it to the action that triggered it. observr reconstructs the full decision tree.
+Every span carries a `parent_span_id` that links it to the action that triggered it. Use `agent_span()` / `agentSpan()` to attach standard observability keys (`intent`, `trigger`, `model`, `tool`) — nesting automatically threads the causal chain.
 
 ```python
-with observr.get_client().span("agent.decide") as parent:
-    with observr.get_client().span("tool.call", parent_span_id=parent.span_id, tool="web_search") as child:
+# Python — context propagation is automatic when spans are nested
+client = observr.get_client()
+with client.agent_span("agent.decide", intent="answer user", model="claude-sonnet-4-6") as root:
+    with client.agent_span("tool.call", trigger=root.span_id, tool="web_search") as child:
         results = web_search("relevant context")
         child.set_attribute("result_count", len(results))
 ```
 
 ```
 trace_id: 4f2a1b3c
-├── agent.decide   (a1b2)
-│   ├── tool.call  (c3d4, parent: a1b2)  ← triggered by agent.decide
-│   └── db.query   (g7h8, parent: a1b2)
+├── agent.decide   (a1b2)  intent="answer user"  model="claude-sonnet-4-6"
+│   └── tool.call  (c3d4, parent: a1b2)  tool="web_search"  result_count=12
 ```
 
 ```ts
 // Node.js
-const parent = new Span("agent.decide", transport);
-await parent.run(async (p) => {
-  const child = new Span("tool.call", transport, { tool: "web_search" }, p.spanId);
-  await child.run(async () => { /* causally linked */ });
-});
+await client.agentSpan("agent.decide", { intent: "answer user", model: "claude-sonnet-4-6" })
+  .run(async (root) => {
+    await client.agentSpan("tool.call", { trigger: root.spanId, tool: "web_search" })
+      .run(async () => { /* causally linked — parent_span_id set automatically */ });
+  });
 ```
+
+Click any **trace chip** in the dashboard to open the causality tree — a waterfall showing every span, its duration, and agent attributes.
 
 </details>
 
@@ -157,11 +160,12 @@ const { init } = require('@ydking0911/observr')
 init({ service: 'my-agent' })
 ```
 
-**Manual spans for agent actions:**
+**Agent spans — causal chain with standard attribute keys:**
 ```python
-with observr.get_client().span("db.query", table="users") as span:
-    rows = db.execute("SELECT ...")
-    span.set_attribute("row_count", len(rows))
+client = observr.get_client()
+with client.agent_span("tool.call", intent="find recent papers", tool="web_search") as span:
+    results = web_search("observability 2026")
+    span.set_attribute("result_count", len(results))
 ```
 
 **Logs are captured automatically:**
@@ -252,8 +256,9 @@ observrd start \
 | **v0.2** | ✅ | Node.js SDK · PyPI publish · npm publish |
 | **v0.3** | ✅ | Slack/Discord alerts · Event retention (TTL) · JSON/CSV export |
 | **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Fastify support |
-| **v0.5** | 📋 | Audit report generation · Causal chain export · Multi-agent tracing |
-| **v0.6** | 📋 | Go SDK · Policy rule engine · On-chain anchoring |
+| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view · Django support |
+| **v0.6** | 📋 | Audit report generation · Causal chain export (JSON-LD) · Policy rule engine |
+| **v0.7** | 📋 | Go SDK · On-chain anchoring · Multi-agent tracing |
 
 ---
 
