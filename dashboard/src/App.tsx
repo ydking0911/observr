@@ -6,6 +6,7 @@ import { FilterBar, type Filters } from "./components/FilterBar";
 import { EventTable } from "./components/EventTable";
 import { PatternCard } from "./components/PatternCard";
 import { StatusDot } from "./components/StatusDot";
+import { TracePanel } from "./components/TracePanel";
 import type { Level, ObservrEvent } from "./types";
 
 function computeStats(events: ObservrEvent[]) {
@@ -89,6 +90,7 @@ export default function App() {
   const { events, connected, clear } = useEventStream();
   const [filters, setFilters] = useState<Filters>({ level: "", search: "" });
   const [activeTab, setActiveTab] = useState<Tab>("events");
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   // Patterns tab state
   const [patternSince, setPatternSince] = useState("15m");
@@ -230,7 +232,7 @@ export default function App() {
 
             {/* Table */}
             <div style={{ flex: 1, padding: "0 var(--space-8) var(--space-8)" }}>
-              <EventTable events={filtered} />
+              <EventTable events={filtered} onSelectTrace={setSelectedTraceId} />
             </div>
           </>
         )}
@@ -346,6 +348,10 @@ export default function App() {
           </>
         )}
       </main>
+
+      {selectedTraceId && (
+        <TracePanel traceId={selectedTraceId} onClose={() => setSelectedTraceId(null)} />
+      )}
     </div>
   );
 }
