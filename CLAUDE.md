@@ -61,12 +61,13 @@ cd server && go vet ./...
   - `shutdown()` restores `builtins.__import__` to its original value.
 - **FastAPI instrumentation**: patches `fastapi.FastAPI.__init__` to call `app.add_middleware(ObservrMiddleware, ...)` on every new app instance.
 - **Transport**: background thread, 10k event queue, silent drop, 1s flush interval, POSTs JSON to `/events`.
+- **Span API**: `client.span(name, parent_span_id=None, **attrs)` — context manager, propagates via `ContextVar`. `client.agent_span(name, *, intent, trigger, model, tool, **extra)` — thin wrapper that pre-populates standard agent attribute keys; standard keys take priority over `**extra`.
 - **Zero dependencies**: `sdk/python/pyproject.toml` has `dependencies = []`. Flask, FastAPI, Django are optional extras.
 
 ### Node.js SDK (`sdk/node/`)
 
 - **Transport**: uses `fetch()` (Node 18+ built-in), `AbortSignal.timeout(3000)`, background `setInterval`. Timer is `.unref()`'d so the process can exit normally.
-- **Span API**: `client.span("name").run(async (s) => { ... })` — async, emits on completion.
+- **Span API**: `client.span(name, attrs).run(async (s) => { ... })` — async, emits on completion. `client.agentSpan(name, { intent?, trigger?, model?, tool?, ...extra })` — same contract as Python's `agent_span()`; destructures standard keys, passes remainder as arbitrary attributes.
 - **Console patch**: replaces `console.log/debug/warn/error` with wrapped versions that send log events. Restored by `unpatchConsole()`.
 - **Build**: `tsup` outputs both ESM and CJS with `.d.ts` declarations.
 
