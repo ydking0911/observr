@@ -203,7 +203,7 @@ class ObservrClient:
             agent.model    — LLM that made the decision
             agent.tool     — tool being invoked
         """
-        attrs: dict[str, object] = {}
+        attrs: dict[str, object] = dict(extra_attributes)
         if intent is not None:
             attrs["agent.intent"] = intent
         if trigger is not None:
@@ -212,5 +212,4 @@ class ObservrClient:
             attrs["agent.model"] = model
         if tool is not None:
             attrs["agent.tool"] = tool
-        attrs.update(extra_attributes)
         return self.span(name, parent_span_id=parent_span_id, **attrs)

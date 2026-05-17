@@ -95,6 +95,14 @@ def test_agent_span_forwards_extra_kwargs(client):
     assert attrs["agent.intent"] == "summarize"
 
 
+# ── Standard keys take priority over extra kwargs ────────────────────────────
+
+def test_standard_keys_override_extra_kwargs(client):
+    with client.agent_span("decide", intent="correct", **{"agent.intent": "should-be-overridden"}):
+        pass
+    assert emitted(client)["attributes"]["agent.intent"] == "correct"
+
+
 # ── Context propagation works the same as span() ─────────────────────────────
 
 def test_agent_span_inherits_parent_context(client):
