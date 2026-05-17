@@ -5,6 +5,7 @@ import { EventDetail } from "./EventDetail";
 
 interface Props {
   events: ObservrEvent[];
+  onSelectTrace?: (traceId: string) => void;
 }
 
 function formatTime(iso: string): string {
@@ -29,7 +30,7 @@ function getMethodColor(method?: string): string {
   }
 }
 
-export function EventTable({ events }: Props) {
+export function EventTable({ events, onSelectTrace }: Props) {
   const [selected, setSelected] = useState<ObservrEvent | null>(null);
 
   if (events.length === 0) {
@@ -91,6 +92,7 @@ export function EventTable({ events }: Props) {
                 index={i}
                 selected={selected?.id === evt.id}
                 onClick={() => setSelected(selected?.id === evt.id ? null : evt)}
+                onSelectTrace={onSelectTrace}
                 getMethodColor={getMethodColor}
                 formatTime={formatTime}
                 formatDuration={formatDuration}
@@ -112,12 +114,13 @@ interface RowProps {
   index: number;
   selected: boolean;
   onClick: () => void;
+  onSelectTrace?: (traceId: string) => void;
   getMethodColor: (m?: string) => string;
   formatTime: (s: string) => string;
   formatDuration: (ms?: number) => string;
 }
 
-function EventRow({ event: evt, index, selected, onClick, getMethodColor, formatTime, formatDuration }: RowProps) {
+function EventRow({ event: evt, index, selected, onClick, onSelectTrace, getMethodColor, formatTime, formatDuration }: RowProps) {
   const isError = evt.level === "error";
   const statusOk = evt.status_code && evt.status_code < 400;
 
@@ -209,6 +212,29 @@ function EventRow({ event: evt, index, selected, onClick, getMethodColor, format
           >
             {evt.message}
           </span>
+        )}
+        {evt.trace_id && onSelectTrace && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSelectTrace(evt.trace_id!); }}
+            style={{
+              marginTop: 2,
+              display: "inline-block",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              lineHeight: "16px",
+              padding: "0 5px",
+              borderRadius: 4,
+              background: "var(--accent-subtle)",
+              color: "var(--accent)",
+              border: "1px solid oklch(55% 0.18 250 / 0.25)",
+              cursor: "pointer",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+            title={`View trace ${evt.trace_id}`}
+          >
+            ⎇ {evt.trace_id.slice(0, 8)}
+          </button>
         )}
       </td>
 

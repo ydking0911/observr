@@ -5,6 +5,7 @@ export interface ObservrEvent {
   id: string;
   trace_id?: string;
   span_id?: string;
+  parent_span_id?: string;
   service: string;
   timestamp: string;
   type: EventType;
