@@ -21,6 +21,49 @@ Components:
 
 ---
 
+## Agent Observability Attribute Convention
+
+Use `agent_span()` (Python) or `agentSpan()` (Node.js) for agent action spans. These are thin wrappers over `span()` that pre-populate standard attribute keys.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `agent.intent` | string | Goal the agent is working toward (e.g. `"summarize document"`) |
+| `agent.trigger` | string | What caused this action: `user_message`, `tool_result`, or a prior `span_id` |
+| `agent.model` | string | LLM that made the decision (e.g. `"claude-sonnet-4-6"`) |
+| `agent.tool` | string | Tool being invoked (e.g. `"web_search"`) |
+
+All keys are optional — omit any that aren't relevant to the span.
+
+**Python:**
+```python
+with client.agent_span(
+    "tool.call",
+    intent="find recent observability papers",
+    trigger="user_message",
+    model="claude-sonnet-4-6",
+    tool="web_search",
+) as span:
+    results = web_search(...)
+    span.set_attribute("result_count", len(results))
+```
+
+**Node.js:**
+```ts
+await client.agentSpan("tool.call", {
+  intent: "find recent observability papers",
+  trigger: "user_message",
+  model: "claude-sonnet-4-6",
+  tool: "web_search",
+}).run(async (span) => {
+  const results = await webSearch(...);
+  span.setAttribute("result_count", results.length);
+});
+```
+
+Context propagation works identically to `span()` — nesting inside another span auto-inherits `parent_span_id` and `trace_id`.
+
+---
+
 ## Verified Commands
 
 Before running any command, `cd` to the correct directory.

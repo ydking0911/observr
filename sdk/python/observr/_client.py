@@ -183,3 +183,33 @@ class ObservrClient:
         """Context manager for manual spans."""
         from observr._span import Span
         return Span(name=name, transport=self._transport, attributes=attributes, parent_span_id=parent_span_id)
+
+    def agent_span(
+        self,
+        name: str,
+        *,
+        intent: str | None = None,
+        trigger: str | None = None,
+        model: str | None = None,
+        tool: str | None = None,
+        parent_span_id: str | None = None,
+        **extra_attributes: object,
+    ):
+        """Context manager for agent action spans with standard attribute keys.
+
+        Standard keys (omitted when None):
+            agent.intent   — goal the agent is working toward
+            agent.trigger  — what caused this action (user_message | tool_result | <span_id>)
+            agent.model    — LLM that made the decision
+            agent.tool     — tool being invoked
+        """
+        attrs: dict[str, object] = dict(extra_attributes)
+        if intent is not None:
+            attrs["agent.intent"] = intent
+        if trigger is not None:
+            attrs["agent.trigger"] = trigger
+        if model is not None:
+            attrs["agent.model"] = model
+        if tool is not None:
+            attrs["agent.tool"] = tool
+        return self.span(name, parent_span_id=parent_span_id, **attrs)
