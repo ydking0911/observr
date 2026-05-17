@@ -79,13 +79,12 @@ export function TracePanel({ traceId, onClose }: Props) {
   const { events, loading } = useTraceEvents(traceId);
   const nodes = flatten(buildTree(events));
 
-  const times = events.map((e) => new Date(e.timestamp).getTime());
-  const traceStart = times.length ? Math.min(...times) : 0;
-  const traceEnd = Math.max(
-    ...events.map((e) => new Date(e.timestamp).getTime() + (e.duration_ms ?? 0)),
-    traceStart + 1
-  );
-  const traceDuration = traceEnd - traceStart;
+  // SDKs emit timestamp at span completion; start = timestamp - duration_ms, end = timestamp.
+  const spanStart = (e: ObservrEvent) => new Date(e.timestamp).getTime() - (e.duration_ms ?? 0);
+  const spanEnd   = (e: ObservrEvent) => new Date(e.timestamp).getTime();
+  const traceStart = events.length ? Math.min(...events.map(spanStart)) : 0;
+  const traceEnd   = events.length ? Math.max(...events.map(spanEnd), traceStart + 1) : 1;
+  const traceDuration = Math.max(traceEnd - traceStart, 1);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
@@ -189,8 +188,7 @@ export function TracePanel({ traceId, onClose }: Props) {
           {!loading &&
             nodes.map((node, i) => {
               const { event, depth } = node;
-              const startMs = new Date(event.timestamp).getTime() - traceStart;
-              const barOffset = (startMs / traceDuration) * 100;
+              const barOffset = ((spanStart(event) - traceStart) / traceDuration) * 100;
               const barWidth = Math.max(((event.duration_ms ?? 0) / traceDuration) * 100, 0.8);
               const icon = TYPE_ICON[event.type] ?? "·";
               const isError = event.level === "error";

@@ -216,6 +216,7 @@ function EventRow({ event: evt, index, selected, onClick, onSelectTrace, getMeth
         {evt.trace_id && onSelectTrace && (
           <button
             onClick={(e) => { e.stopPropagation(); onSelectTrace(evt.trace_id!); }}
+            aria-label={`View trace ${evt.trace_id}`}
             style={{
               marginTop: 2,
               display: "inline-block",
