@@ -61,12 +61,13 @@ cd server && go vet ./...
   - `shutdown()` restores `builtins.__import__` to its original value.
 - **FastAPI instrumentation**: patches `fastapi.FastAPI.__init__` to call `app.add_middleware(ObservrMiddleware, ...)` on every new app instance.
 - **Transport**: background thread, 10k event queue, silent drop, 1s flush interval, POSTs JSON to `/events`.
+- **Span API**: `client.span(name, parent_span_id=None, **attrs)` — context manager, propagates via `ContextVar`. `client.agent_span(name, *, intent, trigger, model, tool, **extra)` — thin wrapper that pre-populates standard agent attribute keys; standard keys take priority over `**extra`.
 - **Zero dependencies**: `sdk/python/pyproject.toml` has `dependencies = []`. Flask, FastAPI, Django are optional extras.
 
 ### Node.js SDK (`sdk/node/`)
 
 - **Transport**: uses `fetch()` (Node 18+ built-in), `AbortSignal.timeout(3000)`, background `setInterval`. Timer is `.unref()`'d so the process can exit normally.
-- **Span API**: `client.span("name").run(async (s) => { ... })` — async, emits on completion.
+- **Span API**: `client.span(name, attrs).run(async (s) => { ... })` — async, emits on completion. `client.agentSpan(name, { intent?, trigger?, model?, tool?, ...extra })` — same contract as Python's `agent_span()`; destructures standard keys, passes remainder as arbitrary attributes.
 - **Console patch**: replaces `console.log/debug/warn/error` with wrapped versions that send log events. Restored by `unpatchConsole()`.
 - **Build**: `tsup` outputs both ESM and CJS with `.d.ts` declarations.
 
@@ -109,5 +110,7 @@ cd server && go vet ./...
 1. **`go:embed all:dist` vs `dist/*`**: always use `all:dist`. The `dist/*` glob silently fails when only `.gitkeep` exists.
 2. **FastAPI import order**: in production code, import FastAPI BEFORE `observr.init()` OR use lazy instrumentation (init first). Both work. In tests that re-import observr, be careful about `sys.modules` state.
 3. **Django middleware settings**: when added via `settings.py` string (`"observr.integrations.django.ObservrMiddleware"`), Django's middleware loader calls `__init__(get_response)`. When used programmatically, call `ObservrMiddleware(transport, get_response)`.
-4. **CGO for SQLite**: Go builds require `CGO_ENABLED=1` and `gcc`/`libc-dev`. CI installs `gcc libc-dev` before building.
-5. **Node.js fetch + AbortSignal.timeout**: requires Node 18+. Node 16 does not have built-in `fetch`.
+4. **Django ASGI mode**: `ObservrMiddleware` auto-detects async `get_response` via `iscoroutinefunction` and marks itself async. Do not add explicit `async` handling — the middleware already delegates to `_acall` internally. Requires `asgiref` (bundled with Django 3.1+).
+5. **Django trace context**: `X-Trace-Id` and `X-Span-Id` request headers are read automatically to continue upstream traces. If headers are absent, a fresh `trace_id` is generated. `parent_span_id` is only set when `X-Span-Id` is present.
+6. **CGO for SQLite**: Go builds require `CGO_ENABLED=1` and `gcc`/`libc-dev`. CI installs `gcc libc-dev` before building.
+7. **Node.js fetch + AbortSignal.timeout**: requires Node 18+. Node 16 does not have built-in `fetch`.
