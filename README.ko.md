@@ -84,6 +84,9 @@ with client.agent_span("agent.decide", intent="사용자 질문 답변", model="
 trace_id: 4f2a1b3c
 ├── agent.decide   (a1b2)  intent="사용자 질문 답변"  model="claude-sonnet-4-6"
 │   └── tool.call  (c3d4, parent: a1b2)  tool="web_search"  result_count=12
+├── agent.decide   (a1b2)
+│   ├── tool.call  (c3d4, parent: a1b2)  ← agent.decide가 트리거
+│   └── db.query   (g7h8, parent: a1b2)
 ```
 
 ```ts
@@ -257,7 +260,7 @@ observrd start \
 | **v0.2** | ✅ | Node.js SDK · PyPI 배포 · npm 배포 |
 | **v0.3** | ✅ | Slack/Discord 알림 · 이벤트 보존 정책(TTL) · JSON/CSV 내보내기 |
 | **v0.4** | ✅ | 인과 귀속 (`parent_span_id`) · 행동 패턴 감지 · Fastify 지원 |
-| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` 헬퍼 · 대시보드 인과 트리 뷰 · Django 지원 |
+| **v0.5** | ✅ | `agent_span()` / `agentSpan()` 헬퍼 · 대시보드 인과 트리 뷰 · Django 지원 |
 | **v0.6** | 📋 | 감사 리포트 생성 · 인과 체인 내보내기 (JSON-LD) · 정책 규칙 엔진 |
 | **v0.7** | 📋 | Go SDK · 온체인 앵커링 · 멀티 에이전트 트레이싱 |
 

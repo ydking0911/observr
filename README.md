@@ -257,7 +257,7 @@ observrd start \
 | **v0.2** | ✅ | Node.js SDK · PyPI publish · npm publish |
 | **v0.3** | ✅ | Slack/Discord alerts · Event retention (TTL) · JSON/CSV export |
 | **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Fastify support |
-| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view · Django support |
+| **v0.5** | ✅ | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view · Django support |
 | **v0.6** | 📋 | Audit report generation · Causal chain export (JSON-LD) · Policy rule engine |
 | **v0.7** | 📋 | Go SDK · On-chain anchoring · Multi-agent tracing |
 

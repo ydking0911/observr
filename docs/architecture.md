@@ -61,7 +61,7 @@ graph TB
 
 ## Audit Data Flow
 
-```
+
 Agent takes action
   → SDK creates span with parent_span_id (links to causal parent)
   → SDK enqueues event (non-blocking, 10k queue)
@@ -70,6 +70,14 @@ Agent takes action
   → multiBroadcaster fans out to WebSocket / SSE / alerter
   → Patterns engine fingerprints the message for behavioral grouping
 ```
+trace_id: 4f2a1b3c
+├── span: agent.decide        (span_id: a1b2)
+│   ├── span: tool.call       (span_id: c3d4, parent: a1b2)  ← caused by agent.decide
+│   │   └── span: web_search  (span_id: e5f6, parent: c3d4)  ← caused by tool.call
+│   └── span: db.query        (span_id: g7h8, parent: a1b2)  ← caused by agent.decide
+```
+
+Query the full tree: `observrd query --trace-id 4f2a1b3c --format json`
 
 ---
 
@@ -259,6 +267,6 @@ dashboard/src/
 | Version | Status | Features |
 |---------|:------:|----------|
 | **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Django / Fastify support |
-| **v0.5** | 🚧 | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view (TracePanel waterfall) |
+| **v0.5** | ✅ | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view (TracePanel waterfall) |
 | **v0.6** | 📋 | Audit report generation · Accountability chain export (full trace tree as JSON-LD) · Policy rule engine |
 | **v0.7** | 📋 | Compliance export (EU AI Act / SOC2) · On-chain anchoring (`blockchain.Anchorer` via `Broadcaster`) · Go SDK |
