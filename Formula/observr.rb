@@ -8,30 +8,30 @@
 # update the sha256 values after each release and copy this file there.
 
 class Observr < Formula
-  desc "Zero-config local observability collector for AI agents and developers"
+  desc "Audit trail and causal attribution for AI agents"
   homepage "https://github.com/ydking0911/observr"
-  version "0.2.0"
+  version "0.5.0"
   license "MIT"
 
   on_macos do
     on_arm do
       url "https://github.com/ydking0911/observr/releases/download/v#{version}/observrd-darwin-arm64"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+      sha256 "5501aa7f599007b2cd6954b8bab0d77b0dddb7774577a011a0ec1352e5bbea5f"
     end
     on_intel do
       url "https://github.com/ydking0911/observr/releases/download/v#{version}/observrd-darwin-amd64"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+      sha256 "3e354c9f60a6cae0cbd52cec73709d8f2b3a342c2d055fee8f8322e6330b4ee7"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/ydking0911/observr/releases/download/v#{version}/observrd-linux-arm64"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+      sha256 "a960d45bbfa67744da775af0204f3ae897fcbf77bc691c12e56dd9f2405c30a1"
     end
     on_intel do
       url "https://github.com/ydking0911/observr/releases/download/v#{version}/observrd-linux-amd64"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+      sha256 "62ef6edcd7a0078855e9de3bdaa9fc097bda70b135e101a6a0272f6c6315939f"
     end
   end
 
