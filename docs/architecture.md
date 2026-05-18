@@ -103,10 +103,12 @@ sdk/python/observr/
 └── integrations/
     ├── flask.py         before_request / after_request hooks
     ├── fastapi.py       ASGI middleware, monkey-patches FastAPI.__init__
-    └── django.py        WSGI middleware
+    └── django.py        WSGI + ASGI middleware; X-Trace-Id / X-Span-Id propagation
 ```
 
 `agent_span(name, *, intent, trigger, model, tool, **extra)` — thin wrapper over `span()` that pre-populates standard agent attribute keys. Keys are omitted when `None`; extra kwargs pass through as arbitrary attributes.
+
+`ObservrMiddleware` (Django): dual-mode — detects sync vs async `get_response` via `iscoroutinefunction` and marks itself async with `markcoroutinefunction` so Django's ASGI handler calls it natively. Reads `X-Trace-Id` / `X-Span-Id` request headers for cross-service trace propagation. On view exception, emits an error event (`status_code=500`, `attributes.error_type`) before re-raising.
 
 ### SDK (Node.js)
 

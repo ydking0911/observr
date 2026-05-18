@@ -110,5 +110,7 @@ cd server && go vet ./...
 1. **`go:embed all:dist` vs `dist/*`**: always use `all:dist`. The `dist/*` glob silently fails when only `.gitkeep` exists.
 2. **FastAPI import order**: in production code, import FastAPI BEFORE `observr.init()` OR use lazy instrumentation (init first). Both work. In tests that re-import observr, be careful about `sys.modules` state.
 3. **Django middleware settings**: when added via `settings.py` string (`"observr.integrations.django.ObservrMiddleware"`), Django's middleware loader calls `__init__(get_response)`. When used programmatically, call `ObservrMiddleware(transport, get_response)`.
-4. **CGO for SQLite**: Go builds require `CGO_ENABLED=1` and `gcc`/`libc-dev`. CI installs `gcc libc-dev` before building.
-5. **Node.js fetch + AbortSignal.timeout**: requires Node 18+. Node 16 does not have built-in `fetch`.
+4. **Django ASGI mode**: `ObservrMiddleware` auto-detects async `get_response` via `iscoroutinefunction` and marks itself async. Do not add explicit `async` handling — the middleware already delegates to `_acall` internally. Requires `asgiref` (bundled with Django 3.1+).
+5. **Django trace context**: `X-Trace-Id` and `X-Span-Id` request headers are read automatically to continue upstream traces. If headers are absent, a fresh `trace_id` is generated. `parent_span_id` is only set when `X-Span-Id` is present.
+6. **CGO for SQLite**: Go builds require `CGO_ENABLED=1` and `gcc`/`libc-dev`. CI installs `gcc libc-dev` before building.
+7. **Node.js fetch + AbortSignal.timeout**: requires Node 18+. Node 16 does not have built-in `fetch`.
