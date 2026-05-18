@@ -105,7 +105,11 @@ class ObservrMiddleware:
     def _call(self, request):
         trace_id, span_id, parent_span_id = _extract_ids(request)
         start = time.monotonic()
-        response = self._get_response(request)
+        try:
+            response = self._get_response(request)
+        except Exception as exc:
+            _emit(self._transport, request, None, trace_id, span_id, parent_span_id, start, exc=exc)
+            raise
         _emit(self._transport, request, response, trace_id, span_id, parent_span_id, start)
         return response
 
@@ -114,7 +118,11 @@ class ObservrMiddleware:
     async def _acall(self, request):
         trace_id, span_id, parent_span_id = _extract_ids(request)
         start = time.monotonic()
-        response = await self._get_response(request)
+        try:
+            response = await self._get_response(request)
+        except Exception as exc:
+            _emit(self._transport, request, None, trace_id, span_id, parent_span_id, start, exc=exc)
+            raise
         _emit(self._transport, request, response, trace_id, span_id, parent_span_id, start)
         return response
 
@@ -137,12 +145,26 @@ def _emit(
     span_id: str,
     parent_span_id: str | None,
     start: float,
+    *,
+    exc: BaseException | None = None,
 ) -> None:
     duration_ms = round((time.monotonic() - start) * 1000, 2)
-    status_code = response.status_code
-    level = "error" if status_code >= 500 else "warn" if status_code >= 400 else "info"
+    if response is not None:
+        status_code = response.status_code
+        level = "error" if status_code >= 500 else "warn" if status_code >= 400 else "info"
+    else:
+        status_code = 500
+        level = "error"
     path = getattr(request, "path", "/")
     method = getattr(request, "method", "")
+
+    attrs: dict = {
+        "remote_addr": _get_ip(request),
+        "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+    }
+    if exc is not None:
+        attrs["error"] = str(exc)
+        attrs["error_type"] = type(exc).__name__
 
     event: dict = {
         "timestamp": datetime.now(tz=timezone.utc).isoformat(),
@@ -155,10 +177,7 @@ def _emit(
         "path": path,
         "status_code": status_code,
         "duration_ms": duration_ms,
-        "attributes": {
-            "remote_addr": _get_ip(request),
-            "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-        },
+        "attributes": attrs,
     }
     if parent_span_id:
         event["parent_span_id"] = parent_span_id
