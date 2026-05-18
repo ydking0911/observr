@@ -149,7 +149,7 @@ New audit outputs (on-chain anchoring, compliance exporters, SIEM integrations) 
 | `sdk/python/observr/_client.py` | Python | Lazy import hook, lifecycle, framework dispatch |
 | `sdk/python/observr/_transport.py` | Python | Background thread, queue, HTTP POST |
 | `sdk/python/observr/integrations/fastapi.py` | Python | Patches `fastapi.FastAPI.__init__` |
-| `sdk/python/observr/integrations/django.py` | Python | WSGI middleware; `_get_transport()` fallback |
+| `sdk/python/observr/integrations/django.py` | Python | WSGI + ASGI middleware; X-Trace-Id/X-Span-Id propagation; exception event emit |
 | `sdk/node/src/transport.ts` | TypeScript | `fetch` + `AbortSignal.timeout`, `unref()` timer |
 | `sdk/node/src/span.ts` | TypeScript | Async span, error capture; carries `parent_span_id` for causal chain |
 | `.github/workflows/ci.yml` | CI | All language test matrix |

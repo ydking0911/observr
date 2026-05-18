@@ -148,10 +148,11 @@ npm install @ydking0911/observr   # Node.js
 
 ### 3. Instrument your agent
 
-**Python — FastAPI / Flask / Django**
+**Python — FastAPI / Flask / Django (WSGI + ASGI)**
 ```python
 import observr
 observr.init(service="my-agent")  # auto-detects the framework
+# Django: X-Trace-Id / X-Span-Id headers are propagated automatically
 ```
 
 **Node.js — Express**

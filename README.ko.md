@@ -148,10 +148,11 @@ npm install @ydking0911/observr   # Node.js
 
 ### 3. 에이전트 계측
 
-**Python — FastAPI / Flask / Django**
+**Python — FastAPI / Flask / Django (WSGI + ASGI)**
 ```python
 import observr
 observr.init(service="my-agent")  # 프레임워크 자동 감지
+# Django: X-Trace-Id / X-Span-Id 헤더 자동 전파로 서비스 간 trace 연결
 ```
 
 **Node.js — Express**
