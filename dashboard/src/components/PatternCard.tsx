@@ -90,8 +90,6 @@ function Sparkline({ pattern }: { pattern: Pattern }) {
   );
 }
 
-const ATTR_LABEL: Record<string, never> = {} as never;
-void ATTR_LABEL;
 
 function AttrChip({ value, tone }: { value: string; tone: "tool" | "intent" | "model" | "service" }) {
   const tones = {

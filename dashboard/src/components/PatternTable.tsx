@@ -142,20 +142,31 @@ export function PatternTable({ patterns }: Props) {
             {COLS.map(([label, key]) => (
               <th
                 key={label || "level-col"}
-                onClick={() => key && setSort(key as SortKey)}
+                aria-sort={sort === key && key ? "descending" : undefined}
                 style={{
                   padding: "var(--space-3) var(--space-4)",
                   fontWeight: 500,
                   fontSize: "var(--text-xs)",
                   letterSpacing: "0.05em",
                   textTransform: "uppercase",
-                  color: sort === key && key ? "var(--accent)" : "var(--text-tertiary)",
+                  color: "var(--text-tertiary)",
                   whiteSpace: "nowrap",
-                  cursor: key ? "pointer" : "default",
-                  userSelect: "none",
                 }}
               >
-                {label}{sort === key && key ? " ↓" : ""}
+                {key ? (
+                  <button
+                    onClick={() => setSort(key as SortKey)}
+                    onKeyDown={(e) => e.key === "Enter" && setSort(key as SortKey)}
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      color: sort === key ? "var(--accent)" : "var(--text-tertiary)",
+                      userSelect: "none",
+                    }}
+                  >
+                    {label}{sort === key ? " ↓" : ""}
+                  </button>
+                ) : label}
               </th>
             ))}
           </tr>

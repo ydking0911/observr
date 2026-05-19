@@ -27,6 +27,26 @@ func TestExtractAgentAttrs(t *testing.T) {
 	}
 }
 
+func TestExtractAgentAttrsObservrPrefix(t *testing.T) {
+	e := storage.Event{
+		Attributes: map[string]any{
+			"observr.tool":   "read_file",
+			"observr.intent": "summarize",
+			"observr.model":  "claude-opus-4-7",
+		},
+	}
+	tool, intent, model := patterns.ExtractAgentAttrs(e)
+	if tool != "read_file" {
+		t.Errorf("tool = %q, want \"read_file\"", tool)
+	}
+	if intent != "summarize" {
+		t.Errorf("intent = %q, want \"summarize\"", intent)
+	}
+	if model != "claude-opus-4-7" {
+		t.Errorf("model = %q, want \"claude-opus-4-7\"", model)
+	}
+}
+
 func TestExtractAgentAttrsNilAttributes(t *testing.T) {
 	e := storage.Event{Attributes: nil}
 	tool, intent, model := patterns.ExtractAgentAttrs(e)

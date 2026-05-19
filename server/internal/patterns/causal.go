@@ -38,7 +38,9 @@ func Correlate(events []storage.Event, minCount int) []CausalCorrelation {
 		if byTraceSpan[e.TraceID] == nil {
 			byTraceSpan[e.TraceID] = map[string]storage.Event{}
 		}
-		byTraceSpan[e.TraceID][e.SpanID] = e
+		if _, exists := byTraceSpan[e.TraceID][e.SpanID]; !exists {
+			byTraceSpan[e.TraceID][e.SpanID] = e
+		}
 	}
 
 	for _, spans := range byTraceSpan {
@@ -189,7 +191,7 @@ func rootIntentFor(e storage.Event, byTraceSpan map[string]map[string]storage.Ev
 				break
 			}
 			current = next
-			ok = true
+			// ok is already true; keep looping
 		}
 	}
 	_, intent, _ := ExtractAgentAttrs(e)

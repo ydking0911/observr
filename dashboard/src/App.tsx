@@ -104,16 +104,19 @@ export default function App() {
   const [patternGroupBy, setPatternGroupBy] = useState<PatternGroupBy>("");
   const [patternView, setPatternView] = useState<PatternView>("cards");
   const [anomaliesOnly, setAnomaliesOnly] = useState(false);
+  const patternsEnabled = activeTab === "patterns";
   const { patterns, loading: patternsLoading } = usePatterns({
     since: patternSince,
     level: patternLevel,
     minCount: patternMinCount,
     groupBy: patternGroupBy,
     buckets: true,
+    enabled: patternsEnabled,
   });
   const { correlations, loading: causalLoading } = useCausalCorrelations({
     since: patternSince,
     minCount: patternMinCount,
+    enabled: patternsEnabled,
   });
 
   const stats = useMemo(() => computeStats(events), [events]);

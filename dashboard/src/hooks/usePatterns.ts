@@ -2,18 +2,22 @@ import { useEffect, useState } from "react";
 import type { Level, Pattern } from "../types";
 
 interface Options {
-  since?: string; // e.g. "15m", "1h"
+  since?: string;
   level?: Level | "";
   minCount?: number;
   groupBy?: "tool" | "intent" | "model" | "";
   buckets?: boolean;
+  enabled?: boolean;
 }
 
 export function usePatterns(opts: Options = {}) {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [loading, setLoading] = useState(true);
+  const enabled = opts.enabled ?? true;
 
   useEffect(() => {
+    if (!enabled) return;
+
     const params = new URLSearchParams();
     if (opts.since) params.set("since", opts.since);
     if (opts.level) params.set("level", opts.level);
@@ -21,14 +25,20 @@ export function usePatterns(opts: Options = {}) {
     if (opts.groupBy) params.set("group_by", opts.groupBy);
     if (opts.buckets) params.set("buckets", "true");
 
+    setLoading(true);
+
+    const controller = new AbortController();
+
     const load = async () => {
       try {
-        const res = await fetch(`/patterns?${params}`);
+        const res = await fetch(`/patterns?${params}`, { signal: controller.signal });
         if (!res.ok) return;
         const data: Pattern[] = await res.json();
         setPatterns(data ?? []);
-      } catch {
-        // swallow network errors silently
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          // swallow network errors silently, keep current view
+        }
       } finally {
         setLoading(false);
       }
@@ -36,8 +46,11 @@ export function usePatterns(opts: Options = {}) {
 
     load();
     const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
-  }, [opts.since, opts.level, opts.minCount, opts.groupBy, opts.buckets]);
+    return () => {
+      clearInterval(id);
+      controller.abort();
+    };
+  }, [enabled, opts.since, opts.level, opts.minCount, opts.groupBy, opts.buckets]);
 
   return { patterns, loading };
 }

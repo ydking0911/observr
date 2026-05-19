@@ -91,7 +91,7 @@ func FetchWithOptions(s querier, since time.Duration, level string, opts GroupOp
 		opts.BucketSize = BucketSize(since)
 	}
 	if opts.BucketStart.IsZero() {
-		opts.BucketStart = now.Add(-since).Truncate(opts.BucketSize)
+		opts.BucketStart = now.Add(-since)
 	}
 	if opts.BucketCount == 0 {
 		opts.BucketCount = int(now.Sub(opts.BucketStart)/opts.BucketSize) + 1
@@ -300,22 +300,16 @@ func levelRank(level string) int {
 	}
 }
 
+// groupValueFor returns the attribute value for the requested groupBy key,
+// or "" if the event does not have that attribute (caller skips the event).
 func groupValueFor(groupBy, tool, intent, model string) string {
 	switch groupBy {
 	case "tool":
-		if tool != "" {
-			return tool
-		}
+		return tool
 	case "intent":
-		if intent != "" {
-			return intent
-		}
+		return intent
 	case "model":
-		if model != "" {
-			return model
-		}
-	case "":
-		return ""
+		return model
 	}
-	return "unknown"
+	return ""
 }

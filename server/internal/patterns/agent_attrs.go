@@ -11,9 +11,9 @@ func ExtractAgentAttrs(e storage.Event) (tool, intent, model string) {
 	if e.Attributes == nil {
 		return
 	}
-	tool = stringAttr(e.Attributes, "agent.tool", "tool")
-	intent = stringAttr(e.Attributes, "agent.intent", "intent")
-	model = stringAttr(e.Attributes, "agent.model", "model")
+	tool = stringAttr(e.Attributes, "observr.tool", "agent.tool", "tool")
+	intent = stringAttr(e.Attributes, "observr.intent", "agent.intent", "intent")
+	model = stringAttr(e.Attributes, "observr.model", "agent.model", "model")
 	return
 }
 

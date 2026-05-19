@@ -344,7 +344,7 @@ func (s *Store) LoadPatternSummaries(limit int) ([]PatternSummary, error) {
 		       services, tools, intents, models, trend, anomaly_score, anomaly, buckets,
 		       sample_event_id, updated_at
 		FROM patterns
-		ORDER BY anomaly DESC, count DESC, updated_at DESC
+		ORDER BY anomaly DESC, count DESC, datetime(updated_at) DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {
@@ -366,17 +366,49 @@ func (s *Store) LoadPatternSummaries(limit int) ([]PatternSummary, error) {
 		); err != nil {
 			return nil, err
 		}
-		p.FirstSeen, _ = time.Parse(time.RFC3339Nano, firstSeen)
-		p.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)
-		p.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		var err error
+		if p.FirstSeen, err = time.Parse(time.RFC3339Nano, firstSeen); err != nil {
+			return nil, fmt.Errorf("parse first_seen %q: %w", firstSeen, err)
+		}
+		if p.LastSeen, err = time.Parse(time.RFC3339Nano, lastSeen); err != nil {
+			return nil, fmt.Errorf("parse last_seen %q: %w", lastSeen, err)
+		}
+		if p.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt); err != nil {
+			return nil, fmt.Errorf("parse updated_at %q: %w", updatedAt, err)
+		}
 		p.Anomaly = anomaly == 1
-		_ = json.Unmarshal([]byte(services), &p.Services)
-		_ = json.Unmarshal([]byte(tools), &p.Tools)
-		_ = json.Unmarshal([]byte(intents), &p.Intents)
-		_ = json.Unmarshal([]byte(models), &p.Models)
+		if services != "" {
+			if err := json.Unmarshal([]byte(services), &p.Services); err != nil {
+				return nil, fmt.Errorf("parse services: %w", err)
+			}
+		}
+		if tools != "" {
+			if err := json.Unmarshal([]byte(tools), &p.Tools); err != nil {
+				return nil, fmt.Errorf("parse tools: %w", err)
+			}
+		}
+		if intents != "" {
+			if err := json.Unmarshal([]byte(intents), &p.Intents); err != nil {
+				return nil, fmt.Errorf("parse intents: %w", err)
+			}
+		}
+		if models != "" {
+			if err := json.Unmarshal([]byte(models), &p.Models); err != nil {
+				return nil, fmt.Errorf("parse models: %w", err)
+			}
+		}
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// DeleteStalePatterns removes pattern rows whose updated_at is older than olderThan.
+func (s *Store) DeleteStalePatterns(olderThan time.Time) error {
+	_, err := s.db.Exec(
+		`DELETE FROM patterns WHERE datetime(updated_at) < datetime(?)`,
+		olderThan.Format(time.RFC3339Nano),
+	)
+	return err
 }
 
 // ── Retention ──────────────────────────────────────────────────────────────

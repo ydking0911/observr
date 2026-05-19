@@ -12,6 +12,7 @@ import (
 type summaryStore interface {
 	Query(storage.QueryFilter) ([]storage.Event, error)
 	SavePatternSummaries([]storage.PatternSummary) error
+	DeleteStalePatterns(olderThan time.Time) error
 }
 
 // Persistor recomputes pattern summaries from recent events and stores them in
@@ -24,6 +25,7 @@ type Persistor struct {
 
 	mu      sync.Mutex
 	lastRun time.Time
+	running bool
 }
 
 func NewPersistor(store summaryStore, window, interval time.Duration) *Persistor {
@@ -38,14 +40,20 @@ func NewPersistor(store summaryStore, window, interval time.Duration) *Persistor
 
 func (p *Persistor) Broadcast(storage.Event) {
 	p.mu.Lock()
-	if time.Since(p.lastRun) < p.interval {
+	if time.Since(p.lastRun) < p.interval || p.running {
 		p.mu.Unlock()
 		return
 	}
 	p.lastRun = time.Now()
+	p.running = true
 	p.mu.Unlock()
 
 	go func() {
+		defer func() {
+			p.mu.Lock()
+			p.running = false
+			p.mu.Unlock()
+		}()
 		if err := p.persist(); err != nil {
 			log.Printf("pattern persistence error: %v", err)
 		}
@@ -84,5 +92,8 @@ func (p *Persistor) persist() error {
 			UpdatedAt:     now,
 		})
 	}
-	return p.store.SavePatternSummaries(summaries)
+	if err := p.store.SavePatternSummaries(summaries); err != nil {
+		return err
+	}
+	return p.store.DeleteStalePatterns(time.Now().UTC().Add(-p.window))
 }
