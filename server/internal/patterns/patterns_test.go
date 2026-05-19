@@ -331,6 +331,9 @@ func TestHandlerIncludesBucketsOnlyWhenRequested(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/patterns?since=15m", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
 	var withoutBuckets []patterns.Pattern
 	if err := json.NewDecoder(rec.Body).Decode(&withoutBuckets); err != nil {
 		t.Fatal(err)
