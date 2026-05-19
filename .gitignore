@@ -69,4 +69,6 @@ tmp/
 server/observrd
 
 # ── docs ──────────────────────────────────────────────────────────────────
-docs/superpowers/*
+docs/superpowers
+.superpowers
+.playwright-mcp
