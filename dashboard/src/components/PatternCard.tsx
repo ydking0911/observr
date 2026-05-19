@@ -244,10 +244,10 @@ export function PatternCard({ pattern }: Props) {
             {(pattern.models ?? []).slice(0, 2).map((v) => <AttrChip key={`model-${v}`} value={v} tone="model" />)}
           </>
         )}
-        {pattern.services.length > 0 && (
+        {(pattern.services ?? []).length > 0 && (
           <>
             <span style={labelStyle}>svc</span>
-            {pattern.services.map((v) => <AttrChip key={`svc-${v}`} value={v} tone="service" />)}
+            {(pattern.services ?? []).map((v) => <AttrChip key={`svc-${v}`} value={v} tone="service" />)}
           </>
         )}
       </div>
