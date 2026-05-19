@@ -47,11 +47,16 @@ func TestMiddlewareReadsTraceparent(t *testing.T) {
 	srv := httptest.NewServer(mw(handler))
 	defer srv.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/ping", nil)
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
-	client := &http.Client{}
-	resp, _ := client.Do(req)
-	resp.Body.Close()
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
 
 	if gotSpan == nil || gotSpan.TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
 		t.Fatalf("expected trace_id from traceparent, got: %+v", gotSpan)

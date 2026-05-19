@@ -3,7 +3,9 @@ package observr
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -17,6 +19,8 @@ type Transport struct {
 	url    string
 	queue  chan map[string]any
 	done   chan struct{}
+	once   sync.Once
+	wg     sync.WaitGroup
 	client *http.Client
 }
 
@@ -32,6 +36,7 @@ func NewTransport(collectorURL string) *Transport {
 
 // Start begins the background flush goroutine.
 func (t *Transport) Start() {
+	t.wg.Add(1)
 	go t.loop()
 }
 
@@ -43,24 +48,15 @@ func (t *Transport) Enqueue(event map[string]any) {
 	}
 }
 
-// Shutdown flushes remaining events and stops the goroutine.
+// Shutdown signals the goroutine to stop, waits for it to drain, then returns.
+// Safe to call multiple times.
 func (t *Transport) Shutdown() {
-	close(t.done)
-	var batch []map[string]any
-	for {
-		select {
-		case e := <-t.queue:
-			batch = append(batch, e)
-		default:
-			if len(batch) > 0 {
-				t.flush(batch)
-			}
-			return
-		}
-	}
+	t.once.Do(func() { close(t.done) })
+	t.wg.Wait()
 }
 
 func (t *Transport) loop() {
+	defer t.wg.Done()
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
 	var batch []map[string]any
@@ -74,7 +70,18 @@ func (t *Transport) loop() {
 				batch = nil
 			}
 		case <-t.done:
-			return
+			// Drain remaining events owned by this goroutine.
+			for {
+				select {
+				case e := <-t.queue:
+					batch = append(batch, e)
+				default:
+					if len(batch) > 0 {
+						t.flush(batch)
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -93,5 +100,6 @@ func (t *Transport) flush(events []map[string]any) {
 	if err != nil {
 		return
 	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 }

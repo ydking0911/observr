@@ -54,7 +54,7 @@ func (c *ObservrClient) Span(ctx context.Context, name string, attrs map[string]
 	s := &Span{
 		TraceID:    traceID(parent),
 		SpanID:     newID(),
-		Attributes: attrs,
+		Attributes: copyAttrs(attrs),
 	}
 	if parent != nil {
 		s.ParentID = parent.SpanID
@@ -97,9 +97,22 @@ func (c *ObservrClient) AgentSpan(ctx context.Context, name string, opts AgentSp
 	return c.Span(ctx, name, attrs)
 }
 
+func copyAttrs(attrs map[string]any) map[string]any {
+	if attrs == nil {
+		return nil
+	}
+	cp := make(map[string]any, len(attrs))
+	for k, v := range attrs {
+		cp[k] = v
+	}
+	return cp
+}
+
 func newID() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("observr: crypto/rand unavailable: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -108,6 +121,8 @@ func traceID(parent *Span) string {
 		return parent.TraceID
 	}
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("observr: crypto/rand unavailable: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }
