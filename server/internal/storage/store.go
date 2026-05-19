@@ -53,6 +53,27 @@ type StoreStats struct {
 	DBSizeBytes int64
 }
 
+// PatternSummary is the SQLite representation of an aggregated pattern.
+type PatternSummary struct {
+	Fingerprint   string
+	GroupBy       string
+	GroupValue    string
+	Count         int
+	FirstSeen     time.Time
+	LastSeen      time.Time
+	Level         string
+	Services      []string
+	Tools         []string
+	Intents       []string
+	Models        []string
+	Trend         string
+	AnomalyScore  float64
+	Anomaly       bool
+	BucketsJSON   string
+	SampleEventID string
+	UpdatedAt     time.Time
+}
+
 // Store wraps SQLite and exposes typed read/write methods.
 type Store struct {
 	db          *sql.DB
@@ -214,6 +235,29 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_events_trace_id  ON events(trace_id);
 		CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_events_path      ON events(path);
+
+		CREATE TABLE IF NOT EXISTS patterns (
+			fingerprint     TEXT NOT NULL,
+			group_by        TEXT NOT NULL DEFAULT '',
+			group_value     TEXT NOT NULL DEFAULT '',
+			count           INTEGER NOT NULL,
+			first_seen      TEXT NOT NULL,
+			last_seen       TEXT NOT NULL,
+			level           TEXT NOT NULL,
+			services        TEXT NOT NULL,
+			tools           TEXT NOT NULL,
+			intents         TEXT NOT NULL,
+			models          TEXT NOT NULL,
+			trend           TEXT NOT NULL,
+			anomaly_score   REAL NOT NULL,
+			anomaly         INTEGER NOT NULL,
+			buckets         TEXT NOT NULL,
+			sample_event_id TEXT,
+			updated_at      TEXT NOT NULL,
+			PRIMARY KEY (fingerprint, group_by, group_value)
+		);
+		CREATE INDEX IF NOT EXISTS idx_patterns_updated_at ON patterns(updated_at);
+		CREATE INDEX IF NOT EXISTS idx_patterns_anomaly    ON patterns(anomaly);
 	`)
 	if err != nil {
 		return err
@@ -226,6 +270,113 @@ func (s *Store) migrate() error {
 		}
 	}
 	return nil
+}
+
+// ── Pattern summaries ─────────────────────────────────────────────────────
+
+func (s *Store) SavePatternSummaries(patterns []PatternSummary) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO patterns
+		  (fingerprint, group_by, group_value, count, first_seen, last_seen, level,
+		   services, tools, intents, models, trend, anomaly_score, anomaly, buckets,
+		   sample_event_id, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(fingerprint, group_by, group_value) DO UPDATE SET
+			count=excluded.count,
+			first_seen=excluded.first_seen,
+			last_seen=excluded.last_seen,
+			level=excluded.level,
+			services=excluded.services,
+			tools=excluded.tools,
+			intents=excluded.intents,
+			models=excluded.models,
+			trend=excluded.trend,
+			anomaly_score=excluded.anomaly_score,
+			anomaly=excluded.anomaly,
+			buckets=excluded.buckets,
+			sample_event_id=excluded.sample_event_id,
+			updated_at=excluded.updated_at
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, p := range patterns {
+		updatedAt := p.UpdatedAt
+		if updatedAt.IsZero() {
+			updatedAt = time.Now().UTC()
+		}
+		services, _ := json.Marshal(p.Services)
+		tools, _ := json.Marshal(p.Tools)
+		intents, _ := json.Marshal(p.Intents)
+		models, _ := json.Marshal(p.Models)
+		anomaly := 0
+		if p.Anomaly {
+			anomaly = 1
+		}
+		if _, err := stmt.Exec(
+			p.Fingerprint, p.GroupBy, p.GroupValue, p.Count,
+			p.FirstSeen.UTC().Format(time.RFC3339Nano),
+			p.LastSeen.UTC().Format(time.RFC3339Nano),
+			p.Level, string(services), string(tools), string(intents), string(models),
+			p.Trend, p.AnomalyScore, anomaly, p.BucketsJSON, p.SampleEventID,
+			updatedAt.UTC().Format(time.RFC3339Nano),
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) LoadPatternSummaries(limit int) ([]PatternSummary, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`
+		SELECT fingerprint, group_by, group_value, count, first_seen, last_seen, level,
+		       services, tools, intents, models, trend, anomaly_score, anomaly, buckets,
+		       sample_event_id, updated_at
+		FROM patterns
+		ORDER BY anomaly DESC, count DESC, updated_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []PatternSummary
+	for rows.Next() {
+		var p PatternSummary
+		var firstSeen, lastSeen, updatedAt string
+		var services, tools, intents, models string
+		var anomaly int
+		if err := rows.Scan(
+			&p.Fingerprint, &p.GroupBy, &p.GroupValue, &p.Count,
+			&firstSeen, &lastSeen, &p.Level, &services, &tools, &intents, &models,
+			&p.Trend, &p.AnomalyScore, &anomaly, &p.BucketsJSON,
+			&p.SampleEventID, &updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		p.FirstSeen, _ = time.Parse(time.RFC3339Nano, firstSeen)
+		p.LastSeen, _ = time.Parse(time.RFC3339Nano, lastSeen)
+		p.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		p.Anomaly = anomaly == 1
+		_ = json.Unmarshal([]byte(services), &p.Services)
+		_ = json.Unmarshal([]byte(tools), &p.Tools)
+		_ = json.Unmarshal([]byte(intents), &p.Intents)
+		_ = json.Unmarshal([]byte(models), &p.Models)
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // ── Retention ──────────────────────────────────────────────────────────────

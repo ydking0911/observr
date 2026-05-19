@@ -1,6 +1,9 @@
 package patterns_test
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -220,5 +223,114 @@ func TestGroupSampleEventIDSet(t *testing.T) {
 	}
 	if ps[0].SampleEventID == "" {
 		t.Error("expected SampleEventID to be set")
+	}
+}
+
+func TestGroupWithOptionsAddsBucketsTrendAnomalyAndAgentAttrs(t *testing.T) {
+	start := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+	events := []storage.Event{
+		{ID: "e1", Service: "api", Level: "error", Message: "tool timeout after 100 ms", Timestamp: start.Add(time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "research", "agent.model": "gpt-5.4"}},
+		{ID: "e2", Service: "api", Level: "error", Message: "tool timeout after 200 ms", Timestamp: start.Add(6 * time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "research", "agent.model": "gpt-5.4"}},
+		{ID: "e3", Service: "api", Level: "error", Message: "tool timeout after 300 ms", Timestamp: start.Add(11 * time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "checkout", "agent.model": "gpt-5.4"}},
+		{ID: "e4", Service: "api", Level: "error", Message: "tool timeout after 400 ms", Timestamp: start.Add(12 * time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "checkout", "agent.model": "gpt-5.4"}},
+		{ID: "e5", Service: "api", Level: "error", Message: "tool timeout after 500 ms", Timestamp: start.Add(13 * time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "checkout", "agent.model": "gpt-5.4"}},
+		{ID: "e6", Service: "api", Level: "error", Message: "tool timeout after 600 ms", Timestamp: start.Add(14 * time.Minute), Attributes: map[string]any{"agent.tool": "web_search", "agent.intent": "checkout", "agent.model": "gpt-5.4"}},
+	}
+
+	ps := patterns.GroupWithOptions(events, patterns.GroupOptions{
+		MinCount:         1,
+		BucketStart:      start,
+		BucketSize:       5 * time.Minute,
+		BucketCount:      3,
+		IncludeBuckets:   true,
+		AnomalyThreshold: 2,
+	})
+
+	if len(ps) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(ps))
+	}
+	p := ps[0]
+	if p.Trend != "rising" {
+		t.Errorf("Trend = %q, want rising", p.Trend)
+	}
+	if !p.Anomaly {
+		t.Errorf("expected anomaly=true, score=%v", p.AnomalyScore)
+	}
+	if len(p.Buckets) != 3 || p.Buckets[2].Count != 4 {
+		t.Errorf("Buckets = %+v, want 3 buckets with last count 4", p.Buckets)
+	}
+	if len(p.Tools) != 1 || p.Tools[0] != "web_search" {
+		t.Errorf("Tools = %v, want [web_search]", p.Tools)
+	}
+	if len(p.Intents) != 2 || p.Intents[0] != "checkout" || p.Intents[1] != "research" {
+		t.Errorf("Intents = %v, want [checkout research]", p.Intents)
+	}
+	if len(p.Models) != 1 || p.Models[0] != "gpt-5.4" {
+		t.Errorf("Models = %v, want [gpt-5.4]", p.Models)
+	}
+}
+
+func TestGroupWithOptionsGroupsByTool(t *testing.T) {
+	now := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+	events := []storage.Event{
+		{ID: "e1", Service: "api", Level: "error", Message: "timeout 100", Timestamp: now, Attributes: map[string]any{"agent.tool": "web_search"}},
+		{ID: "e2", Service: "api", Level: "error", Message: "timeout 200", Timestamp: now, Attributes: map[string]any{"agent.tool": "db_query"}},
+	}
+
+	ps := patterns.GroupWithOptions(events, patterns.GroupOptions{MinCount: 1, GroupBy: "tool"})
+	if len(ps) != 2 {
+		t.Fatalf("expected 2 grouped patterns, got %d", len(ps))
+	}
+	seen := map[string]bool{}
+	for _, p := range ps {
+		if p.GroupBy != "tool" {
+			t.Errorf("GroupBy = %q, want tool", p.GroupBy)
+		}
+		seen[p.GroupValue] = true
+	}
+	if !seen["web_search"] || !seen["db_query"] {
+		t.Errorf("group values = %v, want web_search and db_query", seen)
+	}
+}
+
+type patternMockStore struct {
+	events []storage.Event
+}
+
+func (m *patternMockStore) Query(f storage.QueryFilter) ([]storage.Event, error) {
+	return m.events, nil
+}
+
+func TestHandlerIncludesBucketsOnlyWhenRequested(t *testing.T) {
+	now := time.Now().UTC()
+	store := &patternMockStore{events: []storage.Event{
+		{ID: "e1", Service: "api", Level: "error", Message: "timeout 100", Timestamp: now.Add(-2 * time.Minute)},
+		{ID: "e2", Service: "api", Level: "error", Message: "timeout 200", Timestamp: now.Add(-1 * time.Minute)},
+	}}
+	handler := patterns.NewHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/patterns?since=15m&buckets=true", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var withBuckets []patterns.Pattern
+	if err := json.NewDecoder(rec.Body).Decode(&withBuckets); err != nil {
+		t.Fatal(err)
+	}
+	if len(withBuckets) != 1 || len(withBuckets[0].Buckets) == 0 {
+		t.Fatalf("expected buckets in response, got %+v", withBuckets)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/patterns?since=15m", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var withoutBuckets []patterns.Pattern
+	if err := json.NewDecoder(rec.Body).Decode(&withoutBuckets); err != nil {
+		t.Fatal(err)
+	}
+	if len(withoutBuckets) != 1 || withoutBuckets[0].Buckets != nil {
+		t.Fatalf("expected buckets omitted by default, got %+v", withoutBuckets)
 	}
 }

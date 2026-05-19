@@ -60,6 +60,7 @@ func main() {
 	alertThreshold := flag.Int("alert-threshold", 1, "Number of matching events before alerting")
 	alertWindow := flag.Duration("alert-window", 60*time.Second, "Time window for threshold counting")
 	alertCooldown := flag.Duration("alert-cooldown", 5*time.Minute, "Minimum time between alerts")
+	persistPatterns := flag.Bool("persist-patterns", false, "Persist computed pattern summaries to SQLite")
 	flag.Parse()
 
 	retentionDur, err := parseRetention(*retention)
@@ -93,6 +94,7 @@ func main() {
 
 	// Pattern detection API
 	mux.Handle("GET /patterns", patterns.NewHandler(store))
+	mux.Handle("GET /patterns/causal", patterns.NewCausalHandler(store))
 
 	// WebSocket for real-time dashboard streaming
 	hub := dashboard.NewHub(store)
@@ -116,7 +118,13 @@ func main() {
 			*alertLevel, *alertThreshold, *alertWindow, *alertCooldown)
 	}
 
-	store.SetBroadcaster(&multiBroadcaster{ws: hub, sse: tailHub, alert: alerter})
+	var patternPersistor *patterns.Persistor
+	if *persistPatterns {
+		patternPersistor = patterns.NewPersistor(store, 24*time.Hour, 30*time.Second)
+		log.Printf("pattern persistence enabled (window=24h interval=30s)")
+	}
+
+	store.SetBroadcaster(&multiBroadcaster{ws: hub, sse: tailHub, alert: alerter, patterns: patternPersistor})
 	mux.Handle("GET /tail", tailHub)
 	mux.Handle("GET /ws", hub)
 
@@ -178,9 +186,10 @@ func main() {
 
 // multiBroadcaster fans out to the WebSocket hub, the SSE tail hub, and optionally a webhook alerter.
 type multiBroadcaster struct {
-	ws    storage.Broadcaster
-	sse   storage.Broadcaster
-	alert storage.Broadcaster // may be nil
+	ws       storage.Broadcaster
+	sse      storage.Broadcaster
+	alert    storage.Broadcaster // may be nil
+	patterns storage.Broadcaster // may be nil
 }
 
 func (m *multiBroadcaster) Broadcast(e storage.Event) {
@@ -188,6 +197,9 @@ func (m *multiBroadcaster) Broadcast(e storage.Event) {
 	m.sse.Broadcast(e)
 	if m.alert != nil {
 		m.alert.Broadcast(e)
+	}
+	if m.patterns != nil {
+		m.patterns.Broadcast(e)
 	}
 }
 
