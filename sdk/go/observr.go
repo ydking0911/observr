@@ -1,11 +1,23 @@
 package observr
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
-var _client *ObservrClient
+var (
+	_mu     sync.Mutex
+	_client *ObservrClient
+)
 
 // Init initialises the global client. Call once at startup.
+// If called again, the previous client is shut down first.
 func Init(cfg Config) *ObservrClient {
+	_mu.Lock()
+	defer _mu.Unlock()
+	if _client != nil {
+		_client.Shutdown()
+	}
 	_client = NewClient(cfg)
 	_client.Start()
 	return _client
@@ -13,6 +25,8 @@ func Init(cfg Config) *ObservrClient {
 
 // GetClient returns the global client. Panics if Init was not called.
 func GetClient() *ObservrClient {
+	_mu.Lock()
+	defer _mu.Unlock()
 	if _client == nil {
 		panic("observr.Init() must be called before GetClient()")
 	}

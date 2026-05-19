@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -102,4 +103,7 @@ func (t *Transport) flush(events []map[string]any) {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("observr: collector returned %d", resp.StatusCode)
+	}
 }

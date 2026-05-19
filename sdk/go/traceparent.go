@@ -24,7 +24,11 @@ func ParseTraceparent(header string) (*Span, error) {
 }
 
 // FormatTraceparent formats a Span as a W3C traceparent header value.
+// Returns an empty string if s is nil.
 func FormatTraceparent(s *Span) string {
+	if s == nil {
+		return ""
+	}
 	return fmt.Sprintf("00-%s-%s-01", s.TraceID, s.SpanID)
 }
 

@@ -17,6 +17,7 @@ func TestMiddlewareInjectsSpan(t *testing.T) {
 	})
 
 	c := observr.NewClient(observr.Config{Service: "svc", CollectorURL: "http://localhost:9999"})
+	defer c.Shutdown()
 	mw := nethttp.Middleware(c)
 	srv := httptest.NewServer(mw(handler))
 	defer srv.Close()
@@ -43,6 +44,7 @@ func TestMiddlewareReadsTraceparent(t *testing.T) {
 	})
 
 	c := observr.NewClient(observr.Config{Service: "svc", CollectorURL: "http://localhost:9999"})
+	defer c.Shutdown()
 	mw := nethttp.Middleware(c)
 	srv := httptest.NewServer(mw(handler))
 	defer srv.Close()
