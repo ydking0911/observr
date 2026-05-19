@@ -293,20 +293,25 @@ func TestGroupWithOptionsGroupsByTool(t *testing.T) {
 	}
 }
 
-type patternMockStore struct {
-	events []storage.Event
-}
-
-func (m *patternMockStore) Query(f storage.QueryFilter) ([]storage.Event, error) {
-	return m.events, nil
+func newTestStore(t *testing.T, events ...storage.Event) *storage.Store {
+	t.Helper()
+	s, err := storage.Open(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if err := s.Insert(events); err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestHandlerIncludesBucketsOnlyWhenRequested(t *testing.T) {
 	now := time.Now().UTC()
-	store := &patternMockStore{events: []storage.Event{
-		{ID: "e1", Service: "api", Level: "error", Message: "timeout 100", Timestamp: now.Add(-2 * time.Minute)},
-		{ID: "e2", Service: "api", Level: "error", Message: "timeout 200", Timestamp: now.Add(-1 * time.Minute)},
-	}}
+	store := newTestStore(t,
+		storage.Event{Service: "api", Level: "error", Message: "timeout 100", Timestamp: now.Add(-2 * time.Minute)},
+		storage.Event{Service: "api", Level: "error", Message: "timeout 200", Timestamp: now.Add(-1 * time.Minute)},
+	)
 	handler := patterns.NewHandler(store)
 
 	req := httptest.NewRequest(http.MethodGet, "/patterns?since=15m&buckets=true", nil)

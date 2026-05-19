@@ -39,12 +39,21 @@ func TestCausalCorrelationsFromRootIntentToErrorFingerprint(t *testing.T) {
 }
 
 func TestCausalHandlerReturnsJSON(t *testing.T) {
+	s, err := storage.Open(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+
 	now := time.Now().UTC()
-	store := &patternMockStore{events: []storage.Event{
-		{ID: "root1", TraceID: "t1", SpanID: "s1", Service: "agent", Level: "info", Type: "span", Message: "research", Timestamp: now, Attributes: map[string]any{"agent.intent": "research"}},
-		{ID: "err1", TraceID: "t1", SpanID: "s2", ParentSpanID: "s1", Service: "search", Level: "error", Type: "log", Message: "search timeout 5000", Timestamp: now.Add(time.Second)},
-	}}
-	handler := patterns.NewCausalHandler(store)
+	if err := s.Insert([]storage.Event{
+		{TraceID: "t1", SpanID: "s1", Service: "agent", Level: "info", Type: "span", Message: "research", Timestamp: now, Attributes: map[string]any{"agent.intent": "research"}},
+		{TraceID: "t1", SpanID: "s2", ParentSpanID: "s1", Service: "search", Level: "error", Type: "log", Message: "search timeout 5000", Timestamp: now.Add(time.Second)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := patterns.NewCausalHandler(s)
 
 	req := httptest.NewRequest(http.MethodGet, "/patterns/causal?since=15m", nil)
 	rec := httptest.NewRecorder()
