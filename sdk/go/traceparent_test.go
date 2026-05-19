@@ -33,9 +33,12 @@ func TestFormatTraceparent(t *testing.T) {
 func TestParseTraceparentInvalid(t *testing.T) {
 	cases := []string{
 		"bad-header",
-		"00-ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ-00f067aa0ba902b7-01", // uppercase
+		"00-ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ-00f067aa0ba902b7-01", // uppercase trace-id
 		"00-4bf92f3577b34da6a3ce929d0e0e4736-short-01",            // span-id too short
 		"00-tooshort-00f067aa0ba902b7-01",                         // trace-id too short
+		"00-00000000000000000000000000000000-00f067aa0ba902b7-01", // all-zero trace-id
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01", // all-zero parent-id
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-ZZ", // invalid flags
 	}
 	for _, h := range cases {
 		if _, err := observr.ParseTraceparent(h); err == nil {

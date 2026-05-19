@@ -6,20 +6,26 @@ import (
 	"strings"
 )
 
+var errInvalidTraceparent = errors.New("observr: invalid traceparent header")
+
 // ParseTraceparent parses a W3C traceparent header.
 // The returned Span represents the remote parent: its SpanID is the parent-id
 // field from the header, so ObservrClient.Span() will correctly link to it.
 func ParseTraceparent(header string) (*Span, error) {
 	parts := strings.Split(header, "-")
 	if len(parts) != 4 || parts[0] != "00" {
-		return nil, errors.New("observr: invalid traceparent header")
+		return nil, errInvalidTraceparent
 	}
-	if !isLowercaseHex(parts[1], 32) || !isLowercaseHex(parts[2], 16) {
-		return nil, errors.New("observr: invalid traceparent header")
+	traceID, parentID, flags := parts[1], parts[2], parts[3]
+	if !isLowercaseHex(traceID, 32) || !isLowercaseHex(parentID, 16) || !isLowercaseHex(flags, 2) {
+		return nil, errInvalidTraceparent
+	}
+	if isAllZero(traceID) || isAllZero(parentID) {
+		return nil, errInvalidTraceparent
 	}
 	return &Span{
-		TraceID: parts[1],
-		SpanID:  parts[2],
+		TraceID: traceID,
+		SpanID:  parentID,
 	}, nil
 }
 
@@ -38,6 +44,15 @@ func isLowercaseHex(s string, length int) bool {
 	}
 	for _, c := range s {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAllZero(s string) bool {
+	for _, c := range s {
+		if c != '0' {
 			return false
 		}
 	}
