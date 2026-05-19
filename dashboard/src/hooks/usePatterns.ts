@@ -5,6 +5,8 @@ interface Options {
   since?: string; // e.g. "15m", "1h"
   level?: Level | "";
   minCount?: number;
+  groupBy?: "tool" | "intent" | "model" | "";
+  buckets?: boolean;
 }
 
 export function usePatterns(opts: Options = {}) {
@@ -16,6 +18,8 @@ export function usePatterns(opts: Options = {}) {
     if (opts.since) params.set("since", opts.since);
     if (opts.level) params.set("level", opts.level);
     if (opts.minCount && opts.minCount > 1) params.set("min_count", String(opts.minCount));
+    if (opts.groupBy) params.set("group_by", opts.groupBy);
+    if (opts.buckets) params.set("buckets", "true");
 
     const load = async () => {
       try {
@@ -33,7 +37,7 @@ export function usePatterns(opts: Options = {}) {
     load();
     const id = setInterval(load, 10_000);
     return () => clearInterval(id);
-  }, [opts.since, opts.level, opts.minCount]);
+  }, [opts.since, opts.level, opts.minCount, opts.groupBy, opts.buckets]);
 
   return { patterns, loading };
 }
