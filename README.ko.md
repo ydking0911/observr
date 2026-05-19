@@ -261,9 +261,9 @@ observrd start \
 | **v0.3** | ✅ | Slack/Discord 알림 · 이벤트 보존 정책(TTL) · JSON/CSV 내보내기 |
 | **v0.4** | ✅ | 인과 귀속 (`parent_span_id`) · 행동 패턴 감지 · Fastify 지원 |
 | **v0.5** | ✅ | `agent_span()` / `agentSpan()` 헬퍼 · 대시보드 인과 트리 뷰 · Django 지원 |
-| **v0.6** | 📋 | 심층 행동 패턴 분석 — 시계열 트렌드, 이상 감지, 에이전트 속성(`intent`/`tool`/`model`) 기반 그룹핑, 인과 패턴 연관 분석, 대시보드 Patterns 뷰 |
-| **v0.7** | 📋 | 감사 리포트 생성 · 인과 체인 내보내기 (JSON-LD) · 정책 규칙 엔진 |
-| **v0.8** | 📋 | Go SDK · 온체인 앵커링 · 멀티 에이전트 트레이싱 |
+| **v0.6** | ✅ | 심층 행동 패턴 분석 — 시계열 트렌드, 이상 감지, 에이전트 속성(`intent`/`tool`/`model`) 기반 그룹핑, 인과 패턴 연관 분석, 대시보드 Patterns 뷰 |
+| **v0.7** | 📋 | Go SDK · 위변조 방지 해시체인 감사 로그 · 멀티 에이전트 W3C TraceContext 전파 |
+| **v1.0** | 📋 | API 안정성 보장 · CHANGELOG · 크로스플랫폼 릴리즈 아티팩트 |
 
 ---
 

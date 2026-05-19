@@ -167,6 +167,50 @@ func TestAttributesRoundtrip(t *testing.T) {
 	}
 }
 
+func TestPatternSummariesRoundtrip(t *testing.T) {
+	s := newTestStore(t)
+
+	summaries := []storage.PatternSummary{
+		{
+			Fingerprint:   "payment timeout for user <N>",
+			Count:         3,
+			FirstSeen:     time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC),
+			LastSeen:      time.Date(2026, 5, 18, 10, 5, 0, 0, time.UTC),
+			Level:         "error",
+			Services:      []string{"api", "worker"},
+			Tools:         []string{"web_search"},
+			Intents:       []string{"checkout"},
+			Models:        []string{"gpt-5.4"},
+			Trend:         "rising",
+			AnomalyScore:  4.2,
+			Anomaly:       true,
+			BucketsJSON:   `[{"t":"2026-05-18T10:00:00Z","count":1}]`,
+			SampleEventID: "evt_1",
+		},
+	}
+
+	if err := s.SavePatternSummaries(summaries); err != nil {
+		t.Fatalf("SavePatternSummaries: %v", err)
+	}
+
+	got, err := s.LoadPatternSummaries(10)
+	if err != nil {
+		t.Fatalf("LoadPatternSummaries: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(got))
+	}
+	if got[0].Fingerprint != summaries[0].Fingerprint {
+		t.Errorf("Fingerprint = %q, want %q", got[0].Fingerprint, summaries[0].Fingerprint)
+	}
+	if got[0].Trend != "rising" || !got[0].Anomaly {
+		t.Errorf("trend/anomaly not preserved: %+v", got[0])
+	}
+	if len(got[0].Services) != 2 || got[0].Services[0] != "api" {
+		t.Errorf("Services = %v, want [api worker]", got[0].Services)
+	}
+}
+
 func TestDeleteBefore(t *testing.T) {
 	s := newTestStore(t)
 

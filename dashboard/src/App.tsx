@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
 import { useEventStream } from "./hooks/useEventStream";
 import { usePatterns } from "./hooks/usePatterns";
+import { useCausalCorrelations } from "./hooks/useCausalCorrelations";
 import { MetricCard } from "./components/MetricCard";
 import { FilterBar, type Filters } from "./components/FilterBar";
 import { EventTable } from "./components/EventTable";
 import { PatternCard } from "./components/PatternCard";
+import { PatternTable } from "./components/PatternTable";
+import { CausalTable } from "./components/CausalTable";
 import { StatusDot } from "./components/StatusDot";
 import { TracePanel } from "./components/TracePanel";
 import type { Level, ObservrEvent } from "./types";
@@ -83,6 +86,8 @@ function exportEvents(events: ObservrEvent[], format: "json" | "csv") {
 }
 
 type Tab = "events" | "patterns";
+type PatternView = "cards" | "table";
+type PatternGroupBy = "tool" | "intent" | "model" | "";
 
 const SINCE_OPTIONS = ["15m", "1h", "6h", "24h"];
 
@@ -96,14 +101,30 @@ export default function App() {
   const [patternSince, setPatternSince] = useState("15m");
   const [patternLevel, setPatternLevel] = useState<Level | "">("");
   const [patternMinCount, setPatternMinCount] = useState(1);
+  const [patternGroupBy, setPatternGroupBy] = useState<PatternGroupBy>("");
+  const [patternView, setPatternView] = useState<PatternView>("cards");
+  const [anomaliesOnly, setAnomaliesOnly] = useState(false);
+  const patternsEnabled = activeTab === "patterns";
   const { patterns, loading: patternsLoading } = usePatterns({
     since: patternSince,
     level: patternLevel,
     minCount: patternMinCount,
+    groupBy: patternGroupBy,
+    buckets: true,
+    enabled: patternsEnabled,
+  });
+  const { correlations, loading: causalLoading } = useCausalCorrelations({
+    since: patternSince,
+    minCount: patternMinCount,
+    enabled: patternsEnabled,
   });
 
   const stats = useMemo(() => computeStats(events), [events]);
   const filtered = useMemo(() => applyFilters(events, filters), [events, filters]);
+  const visiblePatterns = useMemo(() => (
+    anomaliesOnly ? patterns.filter((p) => p.anomaly) : patterns
+  ), [patterns, anomaliesOnly]);
+  const anomalyCount = useMemo(() => patterns.filter((p) => p.anomaly).length, [patterns]);
 
   return (
     <div
@@ -150,7 +171,7 @@ export default function App() {
               fontWeight: 500,
             }}
           >
-            v0.2
+            v{__APP_VERSION__}
           </span>
 
           {/* Tab navigation */}
@@ -300,6 +321,30 @@ export default function App() {
                 <option value="debug">Debug</option>
               </select>
 
+              {/* Group by */}
+              <label style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                group by
+                <select
+                  value={patternGroupBy}
+                  onChange={(e) => setPatternGroupBy(e.target.value as PatternGroupBy)}
+                  style={{
+                    padding: "5px 10px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--bg-surface)",
+                    color: "var(--text-primary)",
+                    fontSize: "var(--text-sm)",
+                    fontFamily: "var(--font-sans)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="">fingerprint</option>
+                  <option value="tool">tool</option>
+                  <option value="intent">intent</option>
+                  <option value="model">model</option>
+                </select>
+              </label>
+
               {/* Min count */}
               <label style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                 min count
@@ -321,29 +366,74 @@ export default function App() {
                 />
               </label>
 
+              <div style={{ display: "flex", background: "var(--bg-subtle)", borderRadius: "var(--radius-sm)", padding: 3, gap: 2 }}>
+                {(["cards", "table"] as PatternView[]).map((view) => (
+                  <button
+                    key={view}
+                    onClick={() => setPatternView(view)}
+                    style={{
+                      padding: "4px 12px",
+                      borderRadius: "4px",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "var(--text-sm)",
+                      fontWeight: patternView === view ? 600 : 400,
+                      fontFamily: "var(--font-sans)",
+                      background: patternView === view ? "var(--bg-surface)" : "transparent",
+                      color: patternView === view ? "var(--text-primary)" : "var(--text-secondary)",
+                      boxShadow: patternView === view ? "var(--shadow-sm)" : "none",
+                    }}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setAnomaliesOnly((v) => !v)}
+                style={{
+                  padding: "5px 10px",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: anomaliesOnly ? "oklch(96% 0.04 70)" : "transparent",
+                  color: anomaliesOnly ? "oklch(48% 0.16 55)" : "var(--text-secondary)",
+                  fontSize: "var(--text-sm)",
+                  fontFamily: "var(--font-sans)",
+                  cursor: "pointer",
+                }}
+              >
+                anomalies {anomalyCount}
+              </button>
+
               <span style={{ fontSize: "var(--text-sm)", color: "var(--text-tertiary)", marginLeft: "auto" }}>
-                {patternsLoading ? "loading…" : `${patterns.length} patterns`}
+                {patternsLoading ? "loading…" : `${visiblePatterns.length} patterns`}
               </span>
             </div>
 
-            {/* Pattern cards */}
+            {/* Pattern analysis */}
             <div
               style={{
                 flex: 1,
                 padding: "var(--space-6) var(--space-8)",
                 display: "flex",
                 flexDirection: "column",
-                gap: "var(--space-3)",
+                gap: "var(--space-5)",
               }}
             >
-              {!patternsLoading && patterns.length === 0 && (
+              {!patternsLoading && visiblePatterns.length === 0 && (
                 <div style={{ color: "var(--text-tertiary)", fontSize: "var(--text-sm)", textAlign: "center", paddingTop: "var(--space-8)" }}>
                   No patterns found in the last {patternSince}.
                 </div>
               )}
-              {patterns.map((p) => (
-                <PatternCard key={p.fingerprint} pattern={p} />
-              ))}
+              {patternView === "cards" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                  {visiblePatterns.map((p) => (
+                    <PatternCard key={`${p.fingerprint}-${p.group_by ?? ""}-${p.group_value ?? ""}`} pattern={p} />
+                  ))}
+                </div>
+              )}
+              {patternView === "table" && <PatternTable patterns={visiblePatterns} />}
+              <CausalTable correlations={correlations} loading={causalLoading} />
             </div>
           </>
         )}

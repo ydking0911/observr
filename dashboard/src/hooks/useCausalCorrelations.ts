@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
-import type { Level, Pattern } from "../types";
+import type { CausalCorrelation } from "../types";
 
 interface Options {
   since?: string;
-  level?: Level | "";
   minCount?: number;
-  groupBy?: "tool" | "intent" | "model" | "";
-  buckets?: boolean;
   enabled?: boolean;
 }
 
-export function usePatterns(opts: Options = {}) {
-  const [patterns, setPatterns] = useState<Pattern[]>([]);
+export function useCausalCorrelations(opts: Options = {}) {
+  const [correlations, setCorrelations] = useState<CausalCorrelation[]>([]);
   const [loading, setLoading] = useState(true);
   const enabled = opts.enabled ?? true;
 
@@ -20,10 +17,7 @@ export function usePatterns(opts: Options = {}) {
 
     const params = new URLSearchParams();
     if (opts.since) params.set("since", opts.since);
-    if (opts.level) params.set("level", opts.level);
     if (opts.minCount && opts.minCount > 1) params.set("min_count", String(opts.minCount));
-    if (opts.groupBy) params.set("group_by", opts.groupBy);
-    if (opts.buckets) params.set("buckets", "true");
 
     setLoading(true);
 
@@ -31,13 +25,13 @@ export function usePatterns(opts: Options = {}) {
 
     const load = async () => {
       try {
-        const res = await fetch(`/patterns?${params}`, { signal: controller.signal });
+        const res = await fetch(`/patterns/causal?${params}`, { signal: controller.signal });
         if (!res.ok) return;
-        const data: Pattern[] = await res.json();
-        setPatterns(data ?? []);
+        const data: CausalCorrelation[] = await res.json();
+        setCorrelations(data ?? []);
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          // swallow network errors silently, keep current view
+          // keep the current view if the daemon is unavailable
         }
       } finally {
         setLoading(false);
@@ -50,7 +44,7 @@ export function usePatterns(opts: Options = {}) {
       clearInterval(id);
       controller.abort();
     };
-  }, [enabled, opts.since, opts.level, opts.minCount, opts.groupBy, opts.buckets]);
+  }, [enabled, opts.since, opts.minCount]);
 
-  return { patterns, loading };
+  return { correlations, loading };
 }
