@@ -3,6 +3,9 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/ydking0911/observr/server/internal/storage"
+	"github.com/ydking0911/observr/server/internal/webhook"
 )
 
 func TestParseRetention(t *testing.T) {
@@ -51,3 +54,24 @@ func TestParseRetention(t *testing.T) {
 		})
 	}
 }
+
+func TestMultiBroadcasterSkipsTypedNilOptionalSinks(t *testing.T) {
+	var alerter *webhook.Alerter
+	m := &multiBroadcaster{
+		ws:    nopBroadcaster{},
+		sse:   nopBroadcaster{},
+		alert: alerter,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Broadcast panicked with typed nil optional sink: %v", r)
+		}
+	}()
+
+	m.Broadcast(storage.Event{ID: "evt_test", Service: "svc", Type: "log", Level: "info"})
+}
+
+type nopBroadcaster struct{}
+
+func (nopBroadcaster) Broadcast(storage.Event) {}
