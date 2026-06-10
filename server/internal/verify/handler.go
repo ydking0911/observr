@@ -1,0 +1,95 @@
+// Package verify handles GET /verify for audit hash-chain integrity checks.
+package verify
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/ydking0911/observr/server/internal/storage"
+)
+
+type loader interface {
+	ForEachVerifyEvent(fn func(storage.VerifyEvent) error) error
+}
+
+// Result is the JSON response returned by GET /verify.
+//
+// Checked counts hashed events that were successfully verified. Skipped counts
+// leading legacy rows (written before the hash chain existed) that carry no hash
+// and are therefore unverifiable rather than broken. BrokenAt, when non-nil, is
+// the first event whose stored hash no longer matches the recomputed chain.
+type Result struct {
+	OK       bool    `json:"ok"`
+	Checked  int     `json:"checked"`
+	Skipped  int     `json:"skipped"`
+	BrokenAt *string `json:"broken_at"`
+}
+
+// NewHandler returns an HTTP handler that verifies the stored audit hash chain.
+func NewHandler(s loader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result, err := Check(s)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+}
+
+// errBroken stops streaming early once a tampered row is found.
+var errBroken = errors.New("chain broken")
+
+// Check streams the stored events in insertion order and recomputes the hash
+// chain. A run of legacy rows (empty raw_json/hash) before the first hashed
+// event is treated as unverifiable and skipped — those rows predate the chain,
+// so reporting them as broken would raise a false alarm on every upgraded DB.
+// Once the hashed segment begins, an empty row means a previously-hashed event
+// was deleted or blanked, which is reported as tampering.
+func Check(s loader) (Result, error) {
+	var (
+		prevHash string
+		checked  int
+		skipped  int
+		started  bool
+		broken   *string
+	)
+
+	err := s.ForEachVerifyEvent(func(event storage.VerifyEvent) error {
+		isLegacy := event.RawJSON == "" || event.Hash == ""
+
+		if !started {
+			if isLegacy {
+				skipped++
+				return nil
+			}
+			started = true
+		} else if isLegacy {
+			id := event.ID
+			broken = &id
+			return errBroken
+		}
+
+		if event.Hash != storage.HashForVerify(event.RawJSON, prevHash) {
+			id := event.ID
+			broken = &id
+			return errBroken
+		}
+		prevHash = event.Hash
+		checked++
+		return nil
+	})
+	if err != nil && !errors.Is(err, errBroken) {
+		return Result{}, fmt.Errorf("verify events: %w", err)
+	}
+
+	if broken != nil {
+		return Result{OK: false, Checked: checked, Skipped: skipped, BrokenAt: broken}, nil
+	}
+	return Result{OK: true, Checked: checked, Skipped: skipped, BrokenAt: nil}, nil
+}

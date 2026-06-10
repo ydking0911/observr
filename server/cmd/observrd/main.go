@@ -30,6 +30,7 @@ import (
 	"github.com/ydking0911/observr/server/internal/query"
 	"github.com/ydking0911/observr/server/internal/storage"
 	internaltail "github.com/ydking0911/observr/server/internal/tail"
+	"github.com/ydking0911/observr/server/internal/verify"
 	"github.com/ydking0911/observr/server/internal/webhook"
 )
 
@@ -95,6 +96,9 @@ func main() {
 	// Pattern detection API
 	mux.Handle("GET /patterns", patterns.NewHandler(store))
 	mux.Handle("GET /patterns/causal", patterns.NewCausalHandler(store))
+
+	// Audit hash-chain verification
+	mux.Handle("GET /verify", verify.NewHandler(store))
 
 	// WebSocket for real-time dashboard streaming
 	hub := dashboard.NewHub(store)
@@ -188,8 +192,8 @@ func main() {
 type multiBroadcaster struct {
 	ws       storage.Broadcaster
 	sse      storage.Broadcaster
-	alert    storage.Broadcaster // may be nil
-	patterns storage.Broadcaster // may be nil
+	alert    *webhook.Alerter    // may be nil
+	patterns *patterns.Persistor // may be nil
 }
 
 func (m *multiBroadcaster) Broadcast(e storage.Event) {
