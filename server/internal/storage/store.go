@@ -144,10 +144,13 @@ func (s *Store) Insert(events []Event) error {
 		if e.ID == "" {
 			e.ID = newID()
 		}
-		attrs, _ := json.Marshal(e.Attributes)
+		attrs, err := json.Marshal(e.Attributes)
+		if err != nil {
+			return fmt.Errorf("marshal attributes for event %d (%s): %w", i, e.ID, err)
+		}
 		raw, err := json.Marshal(e)
 		if err != nil {
-			return fmt.Errorf("marshal event for hash: %w", err)
+			return fmt.Errorf("marshal event %d (%s) for hash: %w", i, e.ID, err)
 		}
 		hash := hashEvent(string(raw), prevHash)
 		_, err = stmt.Exec(

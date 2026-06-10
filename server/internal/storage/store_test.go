@@ -1,7 +1,9 @@
 package storage_test
 
 import (
+	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +147,60 @@ func TestInsertSetsIDIfEmpty(t *testing.T) {
 	got, _ := s.Query(storage.QueryFilter{Last: 1})
 	if got[0].ID == "" {
 		t.Error("expected non-empty ID to be assigned")
+	}
+}
+
+func TestInsertMarshalErrorIncludesBatchIndexAndEventID(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.Insert([]storage.Event{
+		{
+			ID:        "ok-event",
+			Service:   "svc",
+			Timestamp: time.Now().UTC(),
+			Type:      "log",
+			Level:     "info",
+			Message:   "ok",
+		},
+		{
+			ID:         "bad-event",
+			Service:    "svc",
+			Timestamp:  time.Now().UTC(),
+			Type:       "log",
+			Level:      "info",
+			Message:    "bad",
+			DurationMS: math.NaN(),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected marshal error")
+	}
+	if !strings.Contains(err.Error(), "marshal event 1 (bad-event) for hash") {
+		t.Fatalf("expected event index and ID in error, got %q", err.Error())
+	}
+}
+
+func TestInsertAttributeMarshalErrorIncludesBatchIndexAndEventID(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.Insert([]storage.Event{
+		{
+			ID:        "bad-event",
+			Service:   "svc",
+			Timestamp: time.Now().UTC(),
+			Type:      "log",
+			Level:     "info",
+			Message:   "bad",
+			Attributes: map[string]any{
+				"unsupported": func() {},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected marshal error")
+	}
+	if !strings.Contains(err.Error(), "marshal attributes for event 0 (bad-event)") {
+		t.Fatalf("expected event index and ID in error, got %q", err.Error())
 	}
 }
 
