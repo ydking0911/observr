@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEventStream } from "./hooks/useEventStream";
 import { usePatterns } from "./hooks/usePatterns";
 import { useCausalCorrelations } from "./hooks/useCausalCorrelations";
@@ -88,6 +88,14 @@ function exportEvents(events: ObservrEvent[], format: "json" | "csv") {
 type Tab = "events" | "patterns";
 type PatternView = "cards" | "table";
 type PatternGroupBy = "tool" | "intent" | "model" | "";
+type ChainStatus = "loading" | "ok" | "broken" | "unverified" | "unknown";
+
+interface VerifyResult {
+  ok: boolean;
+  checked: number;
+  skipped: number;
+  broken_at: string | null;
+}
 
 const SINCE_OPTIONS = ["15m", "1h", "6h", "24h"];
 
@@ -96,6 +104,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>({ level: "", search: "" });
   const [activeTab, setActiveTab] = useState<Tab>("events");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [chainStatus, setChainStatus] = useState<ChainStatus>("loading");
 
   // Patterns tab state
   const [patternSince, setPatternSince] = useState("15m");
@@ -125,6 +134,50 @@ export default function App() {
     anomaliesOnly ? patterns.filter((p) => p.anomaly) : patterns
   ), [patterns, anomaliesOnly]);
   const anomalyCount = useMemo(() => patterns.filter((p) => p.anomaly).length, [patterns]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/verify", { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("verify failed");
+        return res.json() as Promise<VerifyResult>;
+      })
+      .then((result) => {
+        if (!result.ok) { setChainStatus("broken"); return; }
+        // ok with no verified rows means the DB holds only legacy (pre-hash)
+        // events — nothing to vouch for, so don't claim a verified chain.
+        setChainStatus(result.checked === 0 ? "unverified" : "ok");
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") setChainStatus("unknown");
+      });
+    return () => controller.abort();
+  }, []);
+
+  const chainLabel = chainStatus === "ok"
+    ? "chain ✓"
+    : chainStatus === "broken"
+      ? "chain ✗"
+      : chainStatus === "loading"
+        ? "chain …"
+        : chainStatus === "unverified"
+          ? "chain –"
+          : "chain ?";
+  const chainTitle = chainStatus === "broken"
+    ? "Audit hash chain is broken"
+    : chainStatus === "unverified"
+      ? "No hashed events yet — legacy rows are unverifiable"
+      : "Audit hash chain status";
+  const chainColor = chainStatus === "ok"
+    ? "oklch(72% 0.18 145)"
+    : chainStatus === "broken"
+      ? "oklch(68% 0.20 28)"
+      : "oklch(78% 0.04 250)";
+  const chainBg = chainStatus === "ok"
+    ? "oklch(45% 0.14 145 / 0.22)"
+    : chainStatus === "broken"
+      ? "oklch(45% 0.17 28 / 0.24)"
+      : "oklch(55% 0.04 250 / 0.20)";
 
   return (
     <div
@@ -205,7 +258,25 @@ export default function App() {
             ))}
           </div>
         </div>
-        <StatusDot connected={connected} />
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+          <span
+            title={chainTitle}
+            style={{
+              minWidth: 68,
+              textAlign: "center",
+              fontSize: "var(--text-xs)",
+              background: chainBg,
+              color: chainColor,
+              padding: "2px 7px",
+              borderRadius: "4px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {chainLabel}
+          </span>
+          <StatusDot connected={connected} />
+        </div>
       </header>
 
       {/* ── Metrics strip ──────────────────────────────────────────── */}
