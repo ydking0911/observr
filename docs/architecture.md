@@ -27,6 +27,7 @@ graph TB
         store[("SQLite\n(WAL mode)\nAudit Log")]
         patterns["Patterns Engine\nBehavioral fingerprinting"]
         query["GET /query\nAudit Query API"]
+        verify["GET /verify\nHash-chain integrity"]
         ws["WebSocket /ws\nReal-time stream"]
         sse["GET /tail\nSSE stream"]
         broadcaster["multiBroadcaster\n(extension point)"]
@@ -39,6 +40,7 @@ graph TB
         broadcaster --> alerter
         store --> patterns
         store --> query
+        store --> verify
     end
 
     subgraph consumers["Consumers"]
@@ -54,6 +56,7 @@ graph TB
     sse --> cli
     query --> agent
     query --> compliance
+    verify --> browser
     broadcaster -.-> future
 ```
 
@@ -66,7 +69,7 @@ Agent takes action
   → SDK creates span with parent_span_id (links to causal parent)
   → SDK enqueues event (non-blocking, 10k queue)
   → Background thread batches + POSTs to :7676/events
-  → Collector validates + inserts into SQLite
+  → Collector validates + inserts into SQLite with raw_json + SHA-256 hash
   → multiBroadcaster fans out to WebSocket / SSE / alerter
   → Patterns engine fingerprints the message for behavioral grouping
 ```
@@ -83,7 +86,7 @@ Query the full tree: `observrd query --trace-id 4f2a1b3c --format json`
 
 ## Causal Attribution
 
-The `parent_span_id` field is the audit chain mechanism. When an agent action causes a subsequent action, the child span carries the parent's `span_id`. This allows full reconstruction of the decision tree:
+The `parent_span_id` field is the causal chain mechanism. When an agent action causes a subsequent action, the child span carries the parent's `span_id`. This allows full reconstruction of the decision tree:
 
 ```
 trace_id: 4f2a1b3c
@@ -94,6 +97,36 @@ trace_id: 4f2a1b3c
 ```
 
 Query the full tree: `observrd query --trace-id 4f2a1b3c --format json`
+
+---
+
+## Hash-Chain Integrity
+
+The SQLite audit log is tamper-evident. Every inserted event stores:
+
+- `raw_json`: the canonical JSON for the event after its ID is assigned
+- `hash`: `SHA256(prev_hash + raw_json)`, where `prev_hash` is the previous inserted event's hash
+
+`Store.Insert()` computes these values under the store write mutex, so concurrent inserts cannot race and fork the chain. Batches are chained internally: event N's hash becomes event N+1's `prev_hash`.
+
+`GET /verify` streams events in SQLite insertion order (`rowid ASC`), recomputes the chain one row at a time (O(1) memory), and returns the first broken event:
+
+```json
+{ "ok": true,  "checked": 1042, "skipped": 0, "broken_at": null }
+{ "ok": false, "checked": 204,  "skipped": 0, "broken_at": "evt_abc123" }
+```
+
+`checked` counts verified hashed events; `skipped` counts leading legacy rows (written before this feature) that carry no hash. A run of legacy rows before the first hashed event is treated as unverifiable, not broken — so an in-place upgrade does not produce a false `chain ✗`. A blank row appearing *after* hashed rows, however, means a previously-hashed event was deleted or blanked, and is reported as tampering.
+
+### Threat model and limits
+
+This is an unkeyed, single-node hash chain — deliberately simple, and honest about what it does not do:
+
+- **Detects** in-place edits and middle-of-log deletions (the following link no longer matches).
+- **Tail truncation is undetectable.** Removing the most recent N events yields a shorter but self-consistent chain. Detecting this needs a persisted/external head anchor (head hash + count), which is intentionally out of scope for v1 and tracked as future work.
+- **No resistance to a writer of the DB file.** The hash is unkeyed, so an attacker who can edit a row can recompute every subsequent hash and pass `/verify`. Tamper-evidence is meaningful only against actors that cannot recompute the chain (accidental corruption, processes lacking the hashing logic, exported/read-only copies). A keyed-MAC or off-box anchoring variant would raise this bar.
+- **No consensus or remote anchoring.**
+- **Retention tension.** `DeleteBefore` removes the oldest rows; once the genesis events are gone the surviving prefix no longer chains from the empty seed, so `/verify` reports broken at the new oldest row. Retention and full-history verification are inherently in tension for a pure hash chain.
 
 ---
 
@@ -144,6 +177,7 @@ server/
     ├── patterns/patterns.go       Normalize() + Fetch() — behavioral fingerprinting
     ├── webhook/alerter.go         Broadcaster impl; threshold alerting → Slack/Discord
     ├── query/query.go             GET /query — filter + format (JSON/CSV/text)
+    ├── verify/handler.go          GET /verify — recompute hash chain
     ├── tail/tail.go               GET /tail — SSE hub, filters level/service/type
     └── dashboard/hub.go           WebSocket hub; embeds React SPA
 ```
@@ -190,7 +224,9 @@ CREATE TABLE events (
     status_code INTEGER,
     duration_ms REAL,
     message     TEXT,
-    attributes  TEXT                  -- JSON blob
+    attributes  TEXT,                 -- JSON blob
+    raw_json    TEXT,                 -- canonical event JSON used for hashing
+    hash        TEXT                  -- SHA-256(prev_hash + raw_json)
 );
 -- Indexes: level, trace_id, timestamp, path
 ```
@@ -226,7 +262,7 @@ CREATE TABLE events (
 
 ```
 dashboard/src/
-├── App.tsx               Layout, stats computation, filter + trace state
+├── App.tsx               Layout, stats computation, filter + trace state, chain badge
 ├── types.ts              ObservrEvent (incl. parent_span_id), Stats, Pattern
 ├── hooks/
 │   ├── useEventStream.ts WebSocket + HTTP initial load

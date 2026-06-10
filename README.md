@@ -111,9 +111,11 @@ observr normalizes event messages and groups similar ones by fingerprint.
 <details>
 <summary><strong>Audit Log — local, queryable, persistent</strong></summary>
 
-All events are stored locally in SQLite (WAL mode) with full timestamps, service attribution, and structured attributes.
+All events are stored locally in SQLite (WAL mode) with full timestamps, service attribution, structured attributes, and a tamper-evident SHA-256 hash chain.
 
 Queryable by: level · service · trace ID · time range · HTTP path
+
+Verify integrity with `GET /verify`. The dashboard header shows `chain ✓` when the stored chain is intact and `chain ✗` when an older event was modified or deleted.
 
 </details>
 
@@ -205,6 +207,36 @@ $ observrd query --service my-agent --level error --last 200 --format json
 → 3 errors, all traced to span "tool.call" → parent "agent.decide" at 14:32:01
 → Root cause: agent.decide passed malformed input to tool.call
 ```
+
+---
+
+## Verify Audit Integrity
+
+Each inserted event stores its canonical JSON plus `SHA256(prev_hash + event_json)`. Recomputing the chain detects in-place tampering: modifying a past event, or deleting an event from the middle of the log, breaks the next link.
+
+```bash
+curl http://localhost:7676/verify
+```
+
+```json
+{ "ok": true, "checked": 1042, "skipped": 0, "broken_at": null }
+```
+
+If the chain is broken, `broken_at` is the first event ID whose stored hash no longer matches:
+
+```json
+{ "ok": false, "checked": 204, "skipped": 0, "broken_at": "evt_abc123" }
+```
+
+`skipped` counts leading **legacy rows** written before this feature existed. Upgrading an existing database in place is safe: those rows have no stored hash, so they are reported as unverifiable (`skipped`) rather than broken, and verification continues from the first hashed event.
+
+**What it protects against, and what it does not.** This is a local, unkeyed hash chain — not a blockchain. It is honest about its limits:
+
+- **Detects** in-place edits and deletion of events from the middle of the log.
+- **Does not detect tail truncation.** Deleting the most recent N events leaves a shorter but internally consistent chain, so `ok` stays `true`. Closing this gap requires an external head anchor (planned).
+- **Does not resist an attacker with write access to the database file.** Because the hash is unkeyed, anyone who can edit a row can recompute every following hash and pass verification. Tamper-evidence holds only against actors who cannot recompute the chain (e.g. accidental corruption, a process without the verification logic, or read-only-then-tampered exports). A keyed (HMAC) or externally anchored variant is future work.
+- **No distributed consensus.** Single-node tamper evidence only.
+- **Retention interaction.** Retention cleanup deletes the oldest rows; once the genesis events are gone, the surviving prefix no longer chains from the empty seed and `/verify` reports broken for the new oldest row.
 
 ---
 
