@@ -19,6 +19,7 @@ export { Span } from "./span.js";
 export { expressMiddleware } from "./integrations/express.js";
 export { fastifyPlugin } from "./integrations/fastify.js";
 export type { ObservrConfig, ObservrEvent } from "./types.js";
+export { parseTraceparent, formatTraceparent } from "./traceparent.js";
 
 import { ObservrClient } from "./client.js";
 import type { ObservrConfig } from "./types.js";

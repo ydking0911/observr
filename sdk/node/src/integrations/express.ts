@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { parseTraceparent, formatTraceparent } from "../traceparent.js";
 import type { Transport } from "../transport.js";
 
 type Req = {
@@ -11,6 +12,7 @@ type Req = {
 type Res = {
   statusCode: number;
   on: (event: string, fn: () => void) => void;
+  setHeader?: (name: string, value: string) => void;
 };
 type Next = () => void;
 
@@ -22,9 +24,21 @@ type Next = () => void;
  */
 export function expressMiddleware(transport: Transport) {
   return function observrMiddleware(req: Req, res: Res, next: Next): void {
-    const traceId = randomBytes(16).toString("hex");
+    const rawTp = req.headers["traceparent"] as string | undefined;
+    const parsed = rawTp ? parseTraceparent(rawTp) : null;
+
+    let traceId: string;
+    let parentSpanId: string | undefined;
+    if (parsed) {
+      traceId = parsed.traceId;
+      parentSpanId = parsed.parentId;
+    } else {
+      traceId = randomBytes(16).toString("hex");
+    }
     const spanId = randomBytes(8).toString("hex");
     const start = performance.now();
+
+    res.setHeader?.("traceparent", formatTraceparent(traceId, spanId));
 
     res.on("finish", () => {
       const durationMs = parseFloat((performance.now() - start).toFixed(2));
@@ -32,7 +46,7 @@ export function expressMiddleware(transport: Transport) {
       const level =
         statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : "info";
       const path = req.path || req.url || "/";
-      transport.send({
+      const event: Record<string, unknown> = {
         timestamp: new Date().toISOString(),
         type: "http_request",
         level,
@@ -47,7 +61,11 @@ export function expressMiddleware(transport: Transport) {
           remote_addr: req.ip,
           user_agent: req.headers["user-agent"],
         },
-      });
+      };
+      if (parentSpanId !== undefined) {
+        event["parent_span_id"] = parentSpanId;
+      }
+      transport.send(event as Parameters<typeof transport.send>[0]);
     });
 
     next();
@@ -76,7 +94,6 @@ export function instrumentExpress(transport: Transport): void {
     if (express.default) {
       express.default = wrapped;
     } else {
-      // CJS: mutate the module cache entry
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const Module = require("module");
       const cached = Module._cache[require.resolve("express")];
