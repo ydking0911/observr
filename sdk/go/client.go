@@ -63,16 +63,18 @@ func (c *ObservrClient) Span(ctx context.Context, name string, attrs map[string]
 	start := time.Now()
 	end := func() {
 		event := map[string]any{
-			"service":        c.cfg.Service,
-			"type":           "span",
-			"level":          "info",
-			"message":        name,
-			"trace_id":       s.TraceID,
-			"span_id":        s.SpanID,
-			"parent_span_id": s.ParentID,
-			"duration_ms":    float64(time.Since(start).Milliseconds()),
-			"attributes":     s.Attributes,
-			"timestamp":      time.Now().UTC().Format(time.RFC3339Nano),
+			"service":     c.cfg.Service,
+			"type":        "span",
+			"level":       "info",
+			"message":     name,
+			"trace_id":    s.TraceID,
+			"span_id":     s.SpanID,
+			"duration_ms": float64(time.Since(start).Milliseconds()),
+			"attributes":  s.Attributes,
+			"timestamp":   time.Now().UTC().Format(time.RFC3339Nano),
+		}
+		if s.ParentID != "" {
+			event["parent_span_id"] = s.ParentID
 		}
 		c.transport.Enqueue(event)
 	}
