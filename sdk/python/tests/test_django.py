@@ -456,3 +456,106 @@ async def test_django_asgi_propagates_trace_headers(collector):
     event = next(e for e in _CollectorHandler.events if e.get("path") == "/async-ctx")
     assert event["trace_id"] == "async-trace-id"
     assert event["parent_span_id"] == "async-parent-span"
+
+
+# ── W3C traceparent header ───────────────────────────────────────────────────
+
+def test_django_middleware_reads_traceparent_header(collector):
+    """W3C traceparent takes precedence over X-Trace-Id."""
+    pytest.importorskip("django")
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("observr"):
+            del sys.modules[mod]
+    _configure_django()
+
+    port = collector.server_address[1]
+    import observr
+    observr.init(service="django-tp", collector_url=f"http://127.0.0.1:{port}", auto_instrument=False)
+    from django.test import RequestFactory
+    from django.http import JsonResponse
+    from observr.integrations.django import ObservrMiddleware
+    import observr as _observr
+
+    transport = _observr._client._transport
+
+    def view(request):
+        return JsonResponse({"ok": True})
+
+    factory = RequestFactory()
+    request = factory.get(
+        "/tp-path",
+        HTTP_TRACEPARENT="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    )
+    middleware = ObservrMiddleware(transport, view)
+    middleware(request)
+
+    assert wait_for(lambda: any(e.get("path") == "/tp-path" for e in _CollectorHandler.events))
+    event = next(e for e in _CollectorHandler.events if e.get("path") == "/tp-path")
+    assert event["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert event["parent_span_id"] == "00f067aa0ba902b7"
+
+
+def test_django_middleware_falls_back_to_x_trace_id_on_bad_traceparent(collector):
+    """Invalid traceparent falls back to X-Trace-Id header."""
+    pytest.importorskip("django")
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("observr"):
+            del sys.modules[mod]
+    _configure_django()
+
+    port = collector.server_address[1]
+    import observr
+    observr.init(service="django-tp-fb", collector_url=f"http://127.0.0.1:{port}", auto_instrument=False)
+    from django.test import RequestFactory
+    from django.http import JsonResponse
+    from observr.integrations.django import ObservrMiddleware
+    import observr as _observr
+
+    transport = _observr._client._transport
+
+    def view(request):
+        return JsonResponse({"ok": True})
+
+    factory = RequestFactory()
+    request = factory.get(
+        "/tp-fallback",
+        HTTP_TRACEPARENT="not-valid-header",
+        HTTP_X_TRACE_ID="fallback-trace-id",
+    )
+    middleware = ObservrMiddleware(transport, view)
+    middleware(request)
+
+    assert wait_for(lambda: any(e.get("path") == "/tp-fallback" for e in _CollectorHandler.events))
+    event = next(e for e in _CollectorHandler.events if e.get("path") == "/tp-fallback")
+    assert event["trace_id"] == "fallback-trace-id"
+
+
+def test_django_middleware_sets_traceparent_response_header(collector):
+    """Response carries a traceparent header so downstream services can continue the trace."""
+    pytest.importorskip("django")
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("observr"):
+            del sys.modules[mod]
+    _configure_django()
+
+    port = collector.server_address[1]
+    import observr
+    observr.init(service="django-tp-resp", collector_url=f"http://127.0.0.1:{port}", auto_instrument=False)
+    from django.test import RequestFactory
+    from django.http import JsonResponse
+    from observr.integrations.django import ObservrMiddleware
+    import observr as _observr
+
+    transport = _observr._client._transport
+
+    def view(request):
+        return JsonResponse({"ok": True})
+
+    factory = RequestFactory()
+    request = factory.get("/tp-resp")
+    middleware = ObservrMiddleware(transport, view)
+    response = middleware(request)
+
+    assert response["traceparent"].startswith("00-")
+    parts = response["traceparent"].split("-")
+    assert len(parts) == 4 and parts[0] == "00"
