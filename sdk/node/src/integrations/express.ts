@@ -24,8 +24,9 @@ type Next = () => void;
  */
 export function expressMiddleware(transport: Transport) {
   return function observrMiddleware(req: Req, res: Res, next: Next): void {
-    const rawTp = req.headers["traceparent"] as string | undefined;
-    const parsed = rawTp ? parseTraceparent(rawTp) : null;
+    const rawTp = req.headers["traceparent"];
+    const tpHeader = Array.isArray(rawTp) ? rawTp[0] : rawTp;
+    const parsed = tpHeader ? parseTraceparent(tpHeader) : null;
 
     let traceId: string;
     let parentSpanId: string | undefined;

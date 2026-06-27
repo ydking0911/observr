@@ -217,13 +217,13 @@ def test_django_middleware_uses_incoming_trace_id(collector):
         return JsonResponse({"ok": True})
 
     factory = RequestFactory()
-    request = factory.get("/trace-ctx", HTTP_X_TRACE_ID="upstream-trace-abc123")
+    request = factory.get("/trace-ctx", HTTP_X_TRACE_ID="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4")
     middleware = ObservrMiddleware(transport, view)
     middleware(request)
 
     assert wait_for(lambda: any(e.get("path") == "/trace-ctx" for e in _CollectorHandler.events))
     event = next(e for e in _CollectorHandler.events if e.get("path") == "/trace-ctx")
-    assert event["trace_id"] == "upstream-trace-abc123"
+    assert event["trace_id"] == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
 
 
 def test_django_middleware_uses_incoming_span_id_as_parent(collector):
@@ -253,7 +253,7 @@ def test_django_middleware_uses_incoming_span_id_as_parent(collector):
     factory = RequestFactory()
     request = factory.get(
         "/parent-ctx",
-        HTTP_X_TRACE_ID="trace-xyz",
+        HTTP_X_TRACE_ID="aabbccddeeff00112233445566778899",
         HTTP_X_SPAN_ID="parent-span-99",
     )
     middleware = ObservrMiddleware(transport, view)
@@ -261,7 +261,7 @@ def test_django_middleware_uses_incoming_span_id_as_parent(collector):
 
     assert wait_for(lambda: any(e.get("path") == "/parent-ctx" for e in _CollectorHandler.events))
     event = next(e for e in _CollectorHandler.events if e.get("path") == "/parent-ctx")
-    assert event["trace_id"] == "trace-xyz"
+    assert event["trace_id"] == "aabbccddeeff00112233445566778899"
     assert event["parent_span_id"] == "parent-span-99"
 
 
@@ -446,7 +446,7 @@ async def test_django_asgi_propagates_trace_headers(collector):
     factory = RequestFactory()
     request = factory.get(
         "/async-ctx",
-        HTTP_X_TRACE_ID="async-trace-id",
+        HTTP_X_TRACE_ID="deadbeefcafebabe1234567890abcdef",
         HTTP_X_SPAN_ID="async-parent-span",
     )
     middleware = ObservrMiddleware(transport, async_view)
@@ -454,7 +454,7 @@ async def test_django_asgi_propagates_trace_headers(collector):
 
     assert wait_for(lambda: any(e.get("path") == "/async-ctx" for e in _CollectorHandler.events))
     event = next(e for e in _CollectorHandler.events if e.get("path") == "/async-ctx")
-    assert event["trace_id"] == "async-trace-id"
+    assert event["trace_id"] == "deadbeefcafebabe1234567890abcdef"
     assert event["parent_span_id"] == "async-parent-span"
 
 
@@ -520,14 +520,14 @@ def test_django_middleware_falls_back_to_x_trace_id_on_bad_traceparent(collector
     request = factory.get(
         "/tp-fallback",
         HTTP_TRACEPARENT="not-valid-header",
-        HTTP_X_TRACE_ID="fallback-trace-id",
+        HTTP_X_TRACE_ID="ffaabbccddeeff112233445566778899",
     )
     middleware = ObservrMiddleware(transport, view)
     middleware(request)
 
     assert wait_for(lambda: any(e.get("path") == "/tp-fallback" for e in _CollectorHandler.events))
     event = next(e for e in _CollectorHandler.events if e.get("path") == "/tp-fallback")
-    assert event["trace_id"] == "fallback-trace-id"
+    assert event["trace_id"] == "ffaabbccddeeff112233445566778899"
 
 
 def test_django_middleware_sets_traceparent_response_header(collector):

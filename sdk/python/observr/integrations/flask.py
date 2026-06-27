@@ -31,22 +31,6 @@ def instrument_flask(transport: "Transport") -> None:
 
     flask.Flask.__init__ = _patched_init  # type: ignore[method-assign]
 
-    # Also register hooks on any app that already exists in the current context
-    _patch_existing_apps(transport)
-
-
-def _patch_existing_apps(transport: "Transport") -> None:
-    """
-    If a Flask app was already created before init(), register hooks on it.
-    """
-    try:
-        import flask
-        app = flask._app_ctx_stack.top  # type: ignore[attr-defined]
-        if app is not None and hasattr(app, "app"):
-            _register_hooks(app.app, transport)
-    except AttributeError:
-        pass
-
 
 def _register_hooks(app, transport: "Transport") -> None:
     from flask import g, request

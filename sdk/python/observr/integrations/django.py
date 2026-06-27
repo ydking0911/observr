@@ -143,7 +143,12 @@ def _extract_ids(request) -> tuple[str, str, str | None]:
             trace_id, parent_id = parsed
             return trace_id, secrets.token_hex(8), parent_id
     # Legacy custom headers
-    trace_id = request.META.get("HTTP_X_TRACE_ID") or secrets.token_hex(16)
+    _x_trace = request.META.get("HTTP_X_TRACE_ID", "")
+    _LOWER_HEX = frozenset("0123456789abcdef")
+    if len(_x_trace) == 32 and all(c in _LOWER_HEX for c in _x_trace):
+        trace_id = _x_trace
+    else:
+        trace_id = secrets.token_hex(16)
     parent_span_id = request.META.get("HTTP_X_SPAN_ID") or None
     return trace_id, secrets.token_hex(8), parent_span_id
 

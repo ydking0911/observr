@@ -56,16 +56,23 @@ class ObservrMiddleware:
 
         # Extract traceparent from ASGI headers (list of (bytes, bytes) tuples)
         headers_dict = {k.lower(): v for k, v in scope.get("headers", [])}
-        tp_bytes = headers_dict.get(b"traceparent")
         parent_span_id: str | None = None
+        trace_id: str | None = None
+
+        # W3C traceparent takes priority
+        tp_bytes = headers_dict.get(b"traceparent")
         if tp_bytes:
             parsed = parse_traceparent(tp_bytes.decode("utf-8", errors="replace"))
             if parsed:
                 trace_id, parent_span_id = parsed
-            else:
-                trace_id = secrets.token_hex(16)
-        else:
-            trace_id = secrets.token_hex(16)
+
+        # Fall back to legacy X-Trace-Id / X-Span-Id headers
+        if trace_id is None:
+            x_trace = headers_dict.get(b"x-trace-id")
+            x_span = headers_dict.get(b"x-span-id")
+            trace_id = x_trace.decode("utf-8", errors="replace") if x_trace else secrets.token_hex(16)
+            if x_span:
+                parent_span_id = x_span.decode("utf-8", errors="replace")
 
         span_id = secrets.token_hex(8)
         start = time.monotonic()
