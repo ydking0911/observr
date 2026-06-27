@@ -3,12 +3,14 @@ package storage
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -79,6 +81,14 @@ type Store struct {
 	db          *sql.DB
 	path        string
 	broadcaster Broadcaster
+	writeMu     sync.Mutex
+}
+
+// VerifyEvent is the minimal stored form needed to recompute the audit hash chain.
+type VerifyEvent struct {
+	ID      string `json:"id"`
+	RawJSON string `json:"raw_json"`
+	Hash    string `json:"hash"`
 }
 
 func Open(path string) (*Store, error) {
@@ -104,6 +114,9 @@ func (s *Store) SetBroadcaster(b Broadcaster) {
 // ── Write ──────────────────────────────────────────────────────────────────
 
 func (s *Store) Insert(events []Event) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -113,30 +126,44 @@ func (s *Store) Insert(events []Event) error {
 	stmt, err := tx.Prepare(`
 		INSERT INTO events
 		  (id, trace_id, span_id, parent_span_id, service, timestamp, type, level,
-		   method, path, status_code, duration_ms, message, attributes)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		   method, path, status_code, duration_ms, message, attributes, raw_json, hash)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
+	prevHash, err := loadLastHash(tx)
+	if err != nil {
+		return err
+	}
+
 	for i := range events {
 		e := &events[i]
 		if e.ID == "" {
 			e.ID = newID()
 		}
-		attrs, _ := json.Marshal(e.Attributes)
+		attrs, err := json.Marshal(e.Attributes)
+		if err != nil {
+			return fmt.Errorf("marshal attributes for event %d (%s): %w", i, e.ID, err)
+		}
+		raw, err := json.Marshal(e)
+		if err != nil {
+			return fmt.Errorf("marshal event %d (%s) for hash: %w", i, e.ID, err)
+		}
+		hash := hashEvent(string(raw), prevHash)
 		_, err = stmt.Exec(
 			e.ID, e.TraceID, e.SpanID, e.ParentSpanID, e.Service,
 			e.Timestamp.UTC().Format(time.RFC3339Nano),
 			e.Type, e.Level,
 			e.Method, e.Path, e.StatusCode, e.DurationMS,
-			e.Message, string(attrs),
+			e.Message, string(attrs), string(raw), hash,
 		)
 		if err != nil {
 			return err
 		}
+		prevHash = hash
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -211,6 +238,33 @@ func (s *Store) Query(f QueryFilter) ([]Event, error) {
 	return events, rows.Err()
 }
 
+// ForEachVerifyEvent streams events in insertion order (rowid ASC) and invokes
+// fn for each one. It loads a single row at a time so audit verification stays
+// O(1) in memory regardless of how large the audit log has grown. If fn returns
+// an error, iteration stops and that error is propagated to the caller.
+func (s *Store) ForEachVerifyEvent(fn func(VerifyEvent) error) error {
+	rows, err := s.db.Query(`
+		SELECT id, COALESCE(raw_json, ''), COALESCE(hash, '')
+		FROM events
+		ORDER BY rowid ASC
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var e VerifyEvent
+		if err := rows.Scan(&e.ID, &e.RawJSON, &e.Hash); err != nil {
+			return err
+		}
+		if err := fn(e); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
 // ── Migration ──────────────────────────────────────────────────────────────
 
 func (s *Store) migrate() error {
@@ -229,7 +283,9 @@ func (s *Store) migrate() error {
 			status_code    INTEGER,
 			duration_ms    REAL,
 			message        TEXT,
-			attributes     TEXT
+			attributes     TEXT,
+			raw_json       TEXT,
+			hash           TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_events_level     ON events(level);
 		CREATE INDEX IF NOT EXISTS idx_events_trace_id  ON events(trace_id);
@@ -267,6 +323,16 @@ func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`ALTER TABLE events ADD COLUMN parent_span_id TEXT`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("migrate add parent_span_id: %w", err)
+		}
+	}
+	if _, err := s.db.Exec(`ALTER TABLE events ADD COLUMN raw_json TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate add raw_json: %w", err)
+		}
+	}
+	if _, err := s.db.Exec(`ALTER TABLE events ADD COLUMN hash TEXT`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate add hash: %w", err)
 		}
 	}
 	return nil
@@ -470,4 +536,32 @@ func newID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return "evt_" + hex.EncodeToString(b)
+}
+
+func loadLastHash(tx *sql.Tx) (string, error) {
+	var hash sql.NullString
+	err := tx.QueryRow(`
+		SELECT hash
+		FROM events
+		WHERE hash IS NOT NULL AND hash != ''
+		ORDER BY rowid DESC
+		LIMIT 1
+	`).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return hash.String, nil
+}
+
+func hashEvent(rawJSON, prevHash string) string {
+	sum := sha256.Sum256([]byte(prevHash + rawJSON))
+	return hex.EncodeToString(sum[:])
+}
+
+// HashForVerify computes the audit-chain hash for stored raw event JSON.
+func HashForVerify(rawJSON, prevHash string) string {
+	return hashEvent(rawJSON, prevHash)
 }
