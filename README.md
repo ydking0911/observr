@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <strong>Your AI agent acted. But why?</strong>
+  <strong>Your AI coding agent can see what your app did.</strong>
   <br/>
-  <sub>Audit trail and causal attribution for AI agents — one line to instrument</sub>
+  <sub>One-line app instrumentation for your local dev loop — structured telemetry your AI coding agent can query.</sub>
 </p>
 
 <p align="center">
@@ -52,15 +52,27 @@ observr answers these questions.
 
 ## Why observr?
 
-|  | DIY Logging | Datadog / Grafana | **observr** |
-|--|:-----------:|:-----------------:|:-----------:|
-| Agent causal chain | Manual | ✗ | **Automatic** |
-| Decision traceback | Manual | ✗ | **Built-in** |
-| Behavioral patterns | Manual | Partial | **Built-in** |
-| Setup complexity | High | Very high | **1 line** |
-| Local / on-prem | Manual | Paid | **Default** |
-| AI agent native | ✗ | ✗ | **Designed for it** |
-| Cost | Dev time | Expensive | **Free & open-source** |
+observr is designed for one specific intersection: **app-level tracing · local dev loop · one-line setup · output your AI coding agent can query**. Each tool below owns its space; here is how they differ:
+
+| | App tracing & logs | Instrumentation | Local / no infra | AI coding agent can query |
+|--|:--:|:--:|:--:|:--:|
+| **DIY logging** | ✓ manual | Manual wiring | ✓ | Build it yourself |
+| **Datadog** | ✓ | SDK + agent config | ✗ Cloud | Via paid MCP server |
+| **Grafana + OTel** | ✓ | OTel SDK config | Self-host required | Via external tooling |
+| **Netdata** | Infra / kernel | Zero-code | ✓ | MCP (infra metrics) |
+| **Langfuse / Phoenix** | LLM behaviour | SDK | ✓ / cloud options | LLM-side traces |
+| **observr** | **✓ App requests, spans, logs** | **1 `init()` call** | **✓ SQLite, zero infra** | **Structured JSON via CLI** |
+
+> observr does **not** replace any of the tools above — they solve different problems well. It fills the gap at the intersection of lightweight local dev and AI-consumable structured output.
+
+## What observr is — and isn't
+
+**Is:** one-line SDK instrumentation for your app's HTTP requests, spans, and logs — stored locally in SQLite, queryable as structured JSON by your AI coding agent (Claude Code, Cursor).
+
+**Is not:**
+- A tool for observing LLM / AI agent *behaviour* — that's [Langfuse](https://langfuse.com/), Phoenix, Helicone, etc. (excellent tools for that problem, opposite direction)
+- An infrastructure or kernel-level monitor — that's Netdata, Prometheus, etc.
+- A cloud-native operations platform — that's Datadog, Grafana Cloud, etc.
 
 ---
 
@@ -291,7 +303,8 @@ observrd start \
 | **v0.4** | ✅ | Causal attribution (`parent_span_id`) · Behavioral pattern detection · Fastify support |
 | **v0.5** | ✅ | `agent_span()` / `agentSpan()` helper · Dashboard causality tree view · Django support |
 | **v0.6** | ✅ | Deep behavioral pattern analysis — temporal trends, anomaly detection, agent-attribute grouping (`intent`/`tool`/`model`), causal pattern correlation, dashboard Patterns view |
-| **v0.7** | 📋 | Go SDK · Tamper-proof hash-chain audit log · Multi-agent W3C TraceContext propagation |
+| **v0.7** | 🚧 | Go SDK · Tamper-proof hash-chain audit log · Multi-agent W3C TraceContext propagation |
+| **v0.8** | 📋 | Native MCP server — AI coding agents (Claude Code, Cursor) query observr directly without CLI *(planned, not yet implemented)* |
 | **v1.0** | 📋 | API stability guarantee · CHANGELOG · Cross-platform release artifacts |
 
 ---

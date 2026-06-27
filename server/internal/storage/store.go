@@ -238,6 +238,41 @@ func (s *Store) Query(f QueryFilter) ([]Event, error) {
 	return events, rows.Err()
 }
 
+// QueryByTrace returns all events for the given trace ID sorted by timestamp ASC.
+// Returns nil (not an empty slice) when no events match.
+func (s *Store) QueryByTrace(traceID string) ([]Event, error) {
+	rows, err := s.db.Query(`
+		SELECT id, trace_id, span_id, parent_span_id, service, timestamp, type, level,
+		       method, path, status_code, duration_ms, message, attributes
+		FROM events
+		WHERE trace_id = ?
+		ORDER BY timestamp ASC
+	`, traceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var e Event
+		var tsStr, attrsStr string
+		if err := rows.Scan(
+			&e.ID, &e.TraceID, &e.SpanID, &e.ParentSpanID, &e.Service, &tsStr,
+			&e.Type, &e.Level, &e.Method, &e.Path, &e.StatusCode,
+			&e.DurationMS, &e.Message, &attrsStr,
+		); err != nil {
+			return nil, err
+		}
+		e.Timestamp, _ = time.Parse(time.RFC3339Nano, tsStr)
+		if attrsStr != "" {
+			_ = json.Unmarshal([]byte(attrsStr), &e.Attributes)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 // ForEachVerifyEvent streams events in insertion order (rowid ASC) and invokes
 // fn for each one. It loads a single row at a time so audit verification stays
 // O(1) in memory regardless of how large the audit log has grown. If fn returns

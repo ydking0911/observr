@@ -30,6 +30,7 @@ class Span:
         transport: "Transport",
         attributes: dict[str, Any],
         parent_span_id: str | None = None,
+        trace_id: str | None = None,
     ) -> None:
         self.name = name
         self.span_id = secrets.token_hex(8)
@@ -39,15 +40,16 @@ class Span:
         self._token: Token | None = None
 
         active = _active_span.get()
-        if parent_span_id is not None:
+        if trace_id is not None:
+            self.trace_id: str = trace_id
             self.parent_span_id: str | None = parent_span_id
-            self.trace_id: str = active.trace_id if active is not None else secrets.token_hex(16)
+        elif parent_span_id is not None:
+            self.parent_span_id = parent_span_id
+            self.trace_id = active.trace_id if active is not None else secrets.token_hex(16)
         elif active is not None:
-            # Auto-inherit from enclosing span
             self.parent_span_id = active.span_id
             self.trace_id = active.trace_id
         else:
-            # Root span
             self.parent_span_id = None
             self.trace_id = secrets.token_hex(16)
 

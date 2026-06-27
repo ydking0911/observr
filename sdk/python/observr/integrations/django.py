@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from observr._transport import Transport
 
+from observr._traceparent import format_traceparent, parse_traceparent
+
 # Use asgiref helpers when available (always true for Django 3.1+).
 try:
     from asgiref.sync import iscoroutinefunction, markcoroutinefunction
@@ -110,6 +112,7 @@ class ObservrMiddleware:
         except Exception as exc:
             _emit(self._transport, request, None, trace_id, span_id, parent_span_id, start, exc=exc)
             raise
+        response["traceparent"] = format_traceparent(trace_id, span_id)
         _emit(self._transport, request, response, trace_id, span_id, parent_span_id, start)
         return response
 
@@ -123,6 +126,7 @@ class ObservrMiddleware:
         except Exception as exc:
             _emit(self._transport, request, None, trace_id, span_id, parent_span_id, start, exc=exc)
             raise
+        response["traceparent"] = format_traceparent(trace_id, span_id)
         _emit(self._transport, request, response, trace_id, span_id, parent_span_id, start)
         return response
 
@@ -131,10 +135,22 @@ class ObservrMiddleware:
 
 def _extract_ids(request) -> tuple[str, str, str | None]:
     """Read or generate trace / span IDs from incoming request headers."""
-    trace_id = request.META.get("HTTP_X_TRACE_ID") or secrets.token_hex(16)
+    # W3C traceparent takes priority
+    tp = request.META.get("HTTP_TRACEPARENT")
+    if tp:
+        parsed = parse_traceparent(tp)
+        if parsed:
+            trace_id, parent_id = parsed
+            return trace_id, secrets.token_hex(8), parent_id
+    # Legacy custom headers
+    _x_trace = request.META.get("HTTP_X_TRACE_ID", "")
+    _LOWER_HEX = frozenset("0123456789abcdef")
+    if len(_x_trace) == 32 and all(c in _LOWER_HEX for c in _x_trace):
+        trace_id = _x_trace
+    else:
+        trace_id = secrets.token_hex(16)
     parent_span_id = request.META.get("HTTP_X_SPAN_ID") or None
-    span_id = secrets.token_hex(8)
-    return trace_id, span_id, parent_span_id
+    return trace_id, secrets.token_hex(8), parent_span_id
 
 
 def _emit(
