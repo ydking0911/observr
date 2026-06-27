@@ -131,3 +131,29 @@ async def test_async_parallel_isolation(transport):
 
     assert results["a_inner_parent"] == results["a_outer_id"]
     assert results["b_parent"] is None
+
+
+# ── External trace_id injection ───────────────────────────────────────────────
+
+def test_span_explicit_trace_id_overrides_generated(transport):
+    """When trace_id is given, that value is used regardless of active span."""
+    external_trace = "a" * 32
+    with Span("op", transport, {}, parent_span_id="deadbeef12345678", trace_id=external_trace) as s:
+        assert s.trace_id == external_trace
+        assert s.parent_span_id == "deadbeef12345678"
+    event = transport.send.call_args[0][0]
+    assert event["trace_id"] == external_trace
+    assert event["parent_span_id"] == "deadbeef12345678"
+
+
+def test_span_explicit_trace_id_ignores_active_span(transport):
+    """trace_id injection takes priority even when an active span exists."""
+    external_trace = "b" * 32
+    outer = Span("outer", transport, {})
+    with outer:
+        inner = Span("inner", transport, {}, trace_id=external_trace)
+        with inner:
+            pass
+    assert inner.trace_id == external_trace
+    # parent_span_id is None when not explicitly set (even with trace_id)
+    assert inner.parent_span_id is None
