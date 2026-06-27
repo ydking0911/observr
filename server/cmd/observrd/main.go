@@ -30,6 +30,7 @@ import (
 	"github.com/ydking0911/observr/server/internal/query"
 	"github.com/ydking0911/observr/server/internal/storage"
 	internaltail "github.com/ydking0911/observr/server/internal/tail"
+	internaltrace "github.com/ydking0911/observr/server/internal/trace"
 	"github.com/ydking0911/observr/server/internal/verify"
 	"github.com/ydking0911/observr/server/internal/webhook"
 )
@@ -99,6 +100,9 @@ func main() {
 
 	// Audit hash-chain verification
 	mux.Handle("GET /verify", verify.NewHandler(store))
+
+	// Trace query by trace ID
+	mux.Handle("GET /trace/{trace_id}", internaltrace.NewHandler(store))
 
 	// WebSocket for real-time dashboard streaming
 	hub := dashboard.NewHub(store)

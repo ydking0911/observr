@@ -459,3 +459,52 @@ func TestVacuum(t *testing.T) {
 		t.Errorf("Vacuum returned unexpected error: %v", err)
 	}
 }
+
+func TestQueryByTrace(t *testing.T) {
+	s, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	events := []storage.Event{
+		{ID: "evt_a", TraceID: "trace1", Service: "svc", Type: "span", Level: "info", Message: "first", Timestamp: now},
+		{ID: "evt_b", TraceID: "trace1", Service: "svc", Type: "span", Level: "info", Message: "second", Timestamp: now.Add(time.Millisecond)},
+		{ID: "evt_c", TraceID: "other", Service: "svc", Type: "span", Level: "info", Message: "unrelated", Timestamp: now},
+	}
+	if err := s.Insert(events); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.QueryByTrace("trace1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(got))
+	}
+	// Verify ASC order
+	if got[0].ID != "evt_a" {
+		t.Fatalf("expected evt_a first, got %s", got[0].ID)
+	}
+	if got[1].ID != "evt_b" {
+		t.Fatalf("expected evt_b second, got %s", got[1].ID)
+	}
+}
+
+func TestQueryByTraceReturnsNilForUnknownTrace(t *testing.T) {
+	s, err := storage.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	got, err := s.QueryByTrace("nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil, got %v", got)
+	}
+}

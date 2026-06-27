@@ -14,6 +14,8 @@ export default defineConfig({
       "/events": "http://localhost:7676",
       "/query": "http://localhost:7676",
       "/patterns": "http://localhost:7676",
+      "/trace": "http://localhost:7676",
+      "/verify": "http://localhost:7676",
       "/ws": { target: "ws://localhost:7676", ws: true },
     },
   },
