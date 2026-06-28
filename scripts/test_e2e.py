@@ -224,6 +224,38 @@ def main():
         fail("Service name mismatch on some events")
         failed += 1
 
+    # ── 6. Hash-chain integrity ───────────────────────────────────────
+    header("6. Verifying audit hash chain")
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{COLLECTOR_PORT}/verify", timeout=3
+        ) as r:
+            verify_result = json.loads(r.read())
+    except Exception as e:
+        verify_result = None
+        fail(f"/verify request failed: {e}")
+        failed += 1
+
+    if verify_result is not None:
+        if verify_result.get("ok") is True:
+            checked = verify_result.get("checked", 0)
+            ok(f"Chain intact: checked={checked}, broken_at=None, detail=None")
+            passed += 1
+        else:
+            fail(
+                f"Chain broken: ok={verify_result.get('ok')}, "
+                f"broken_at={verify_result.get('broken_at')}, "
+                f"detail={verify_result.get('detail')}"
+            )
+            failed += 1
+
+        if verify_result.get("checked", 0) > 0:
+            ok(f"At least one hashed event verified ({verify_result['checked']} total)")
+            passed += 1
+        else:
+            fail("No events were hashed — chain verification skipped all rows")
+            failed += 1
+
     # ── Result ────────────────────────────────────────────────────────
     header("Result")
     total = passed + failed

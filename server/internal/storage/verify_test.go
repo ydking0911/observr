@@ -256,3 +256,36 @@ func TestOpenBackfillsChainMetaForExistingHashedRows(t *testing.T) {
 		t.Fatalf("unexpected backfilled meta: %+v", meta)
 	}
 }
+
+func TestDeleteBeforeAllHashedEventsResetsChainMeta(t *testing.T) {
+	s := newVerifyTestStore(t)
+	now := time.Now().UTC()
+	events := []Event{
+		{ID: "evt_a", Service: "svc", Timestamp: now.Add(-3 * time.Hour), Type: "log", Level: "info", Message: "a"},
+		{ID: "evt_b", Service: "svc", Timestamp: now.Add(-2 * time.Hour), Type: "log", Level: "info", Message: "b"},
+		{ID: "evt_c", Service: "svc", Timestamp: now.Add(-1 * time.Hour), Type: "log", Level: "info", Message: "c"},
+	}
+	if err := s.Insert(events); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	// 모든 이벤트보다 미래 cutoff → 전체 삭제
+	deleted, err := s.DeleteBefore(now)
+	if err != nil {
+		t.Fatalf("DeleteBefore: %v", err)
+	}
+	if deleted != 3 {
+		t.Fatalf("deleted = %d, want 3", deleted)
+	}
+
+	meta, err := s.ChainMeta()
+	if err != nil {
+		t.Fatalf("ChainMeta: %v", err)
+	}
+	if meta == nil {
+		t.Fatal("expected chain_meta to exist after full deletion")
+	}
+	if meta.Count != 0 {
+		t.Fatalf("meta.Count = %d after full deletion, want 0", meta.Count)
+	}
+}
