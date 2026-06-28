@@ -130,7 +130,7 @@ observr는 이벤트 메시지를 정규화해 유사한 것들을 같은 finger
 
 쿼리 가능 필드: 레벨 · 서비스 · trace ID · 시간 범위 · HTTP path
 
-`GET /verify`로 무결성을 확인할 수 있습니다. 대시보드 헤더는 저장된 체인이 정상일 때 `chain ✓`, 과거 이벤트가 수정되거나 삭제되어 체인이 깨졌을 때 `chain ✗`를 표시합니다.
+`GET /verify`로 무결성을 확인할 수 있습니다. 대시보드 헤더는 저장된 체인이 정상일 때 `chain ✓`, 과거 이벤트가 수정되거나 삭제되어 체인이 깨졌을 때 `chain ✗`, 저장된 head anchor와 남은 row가 맞지 않는 꼬리 절단 상태를 별도로 표시합니다.
 
 </details>
 
@@ -234,24 +234,23 @@ curl http://localhost:7676/verify
 ```
 
 ```json
-{ "ok": true, "checked": 1042, "skipped": 0, "broken_at": null }
+{ "ok": true, "checked": 1042, "skipped": 0, "broken_at": null, "detail": null }
 ```
 
-체인이 깨진 경우 `broken_at`은 저장된 hash가 더 이상 맞지 않는 첫 이벤트 ID입니다.
+체인이 깨진 경우 `detail`이 실패 종류를 설명합니다. 제자리 수정이나 중간 삭제라면 `broken_at`은 저장된 hash가 더 이상 맞지 않는 첫 이벤트 ID입니다.
 
 ```json
-{ "ok": false, "checked": 204, "skipped": 0, "broken_at": "evt_abc123" }
+{ "ok": false, "checked": 204, "skipped": 0, "broken_at": "evt_abc123", "detail": "broken_link" }
 ```
 
-`skipped`는 이 기능 이전에 기록된 **레거시 row**(hash 없음) 개수입니다. 기존 DB를 제자리 업그레이드해도 안전합니다 — 이런 row는 "깨짐"이 아니라 "검증 불가(skipped)"로 처리되고, 검증은 첫 번째 hash 이벤트부터 이어집니다.
+`skipped`는 이 기능 이전에 기록된 **레거시 row**(hash 없음) 개수입니다. 기존 DB를 제자리 업그레이드해도 안전합니다 — 이런 row는 "깨짐"이 아니라 "검증 불가(skipped)"로 처리되고, 검증은 첫 번째 hash 이벤트부터 이어집니다. 이미 hash가 있는 기존 DB는 단일 head anchor(`head_hash`, 개수, 마지막 ID, retention 기준점)를 backfill하여 이후 검증에서 짧아진 꼬리를 감지할 수 있습니다.
 
 **무엇을 막고, 무엇을 막지 못하는가.** 이 기능은 키 없는(unkeyed) 로컬 해시 체인이지 블록체인이 아닙니다. 한계를 정직하게 밝힙니다:
 
-- **감지함**: 제자리 수정 및 로그 중간 이벤트 삭제.
-- **꼬리 절단(tail truncation)은 감지하지 못함**: 가장 최근 N개 이벤트를 삭제하면 더 짧지만 내부적으로 일관된 체인이 남아 `ok`가 `true`로 유지됩니다. 이를 막으려면 외부 head anchor(head hash + 개수)가 필요하며, 이는 향후 과제입니다.
+- **감지함**: 제자리 수정, 로그 중간 이벤트 삭제, 그리고 최신 row가 head anchor 갱신 없이 제거된 꼬리 절단(tail truncation). 꼬리 절단이면 `/verify`는 `ok: false`, `broken_at: null`, `detail: "tail_truncated"`를 반환합니다.
 - **DB 파일 쓰기 권한 공격자에게는 무력함**: hash가 키 없는 방식이라, row를 수정할 수 있는 사람은 이후 모든 hash를 다시 계산해 검증을 통과할 수 있습니다. 위변조 감지는 체인을 재계산할 수 없는 주체(우발적 손상, 해싱 로직이 없는 프로세스, 읽기 전용 내보내기 사본 등)에 대해서만 유효합니다. 키 기반(HMAC) 또는 외부 앵커 방식은 향후 과제입니다.
 - **분산 합의 없음**: 단일 노드 위변조 감지 전용.
-- **retention과의 긴장**: retention cleanup이 가장 오래된 row를 삭제하면, genesis 이벤트가 사라진 뒤 남은 prefix가 더 이상 빈 seed에서 시작하지 않으므로 `/verify`가 새 최古 row에서 broken을 보고합니다.
+- **retention 상호작용**: 정상 `DeleteBefore` cleanup은 보존된 suffix의 기준 anchor를 함께 전진시키므로 거짓 broken-chain 보고를 만들지 않습니다. Store 밖에서 DB를 직접 편집하면 여전히 위변조로 보고될 수 있습니다.
 
 ---
 
