@@ -107,26 +107,27 @@ The SQLite audit log is tamper-evident. Every inserted event stores:
 - `raw_json`: the canonical JSON for the event after its ID is assigned
 - `hash`: `SHA256(prev_hash + raw_json)`, where `prev_hash` is the previous inserted event's hash
 
-`Store.Insert()` computes these values under the store write mutex, so concurrent inserts cannot race and fork the chain. Batches are chained internally: event N's hash becomes event N+1's `prev_hash`.
+`Store.Insert()` computes these values under the store write mutex and updates a single-row `chain_meta` head anchor in the same transaction, so concurrent inserts cannot race, fork the chain, or leave the persisted head behind. Batches are chained internally: event N's hash becomes event N+1's `prev_hash`.
 
 `GET /verify` streams events in SQLite insertion order (`rowid ASC`), recomputes the chain one row at a time (O(1) memory), and returns the first broken event:
 
 ```json
-{ "ok": true,  "checked": 1042, "skipped": 0, "broken_at": null }
-{ "ok": false, "checked": 204,  "skipped": 0, "broken_at": "evt_abc123" }
+{ "ok": true,  "checked": 1042, "skipped": 0, "broken_at": null,         "detail": null }
+{ "ok": false, "checked": 1042, "skipped": 0, "broken_at": null,         "detail": "tail_truncated" }
+{ "ok": false, "checked": 204,  "skipped": 0, "broken_at": "evt_abc123", "detail": "broken_link" }
 ```
 
-`checked` counts verified hashed events; `skipped` counts leading legacy rows (written before this feature) that carry no hash. A run of legacy rows before the first hashed event is treated as unverifiable, not broken — so an in-place upgrade does not produce a false `chain ✗`. A blank row appearing *after* hashed rows, however, means a previously-hashed event was deleted or blanked, and is reported as tampering.
+`checked` counts verified hashed events; `skipped` counts leading legacy rows (written before this feature) that carry no hash. A run of legacy rows before the first hashed event is treated as unverifiable, not broken — so an in-place upgrade does not produce a false `chain ✗`. Existing hashed databases without `chain_meta` are backfilled by scanning rows once and persisting the observed head. A blank row appearing *after* hashed rows, however, means a previously-hashed event was deleted or blanked, and is reported as tampering.
 
 ### Threat model and limits
 
 This is an unkeyed, single-node hash chain — deliberately simple, and honest about what it does not do:
 
 - **Detects** in-place edits and middle-of-log deletions (the following link no longer matches).
-- **Tail truncation is undetectable.** Removing the most recent N events yields a shorter but self-consistent chain. Detecting this needs a persisted/external head anchor (head hash + count), which is intentionally out of scope for v1 and tracked as future work.
+- **Detects** tail truncation when the newest rows are removed without updating `chain_meta`; verification sees fewer rows than the persisted count and returns `detail: "tail_truncated"`.
 - **No resistance to a writer of the DB file.** The hash is unkeyed, so an attacker who can edit a row can recompute every subsequent hash and pass `/verify`. Tamper-evidence is meaningful only against actors that cannot recompute the chain (accidental corruption, processes lacking the hashing logic, exported/read-only copies). A keyed-MAC or off-box anchoring variant would raise this bar.
 - **No consensus or remote anchoring.**
-- **Retention tension.** `DeleteBefore` removes the oldest rows; once the genesis events are gone the surviving prefix no longer chains from the empty seed, so `/verify` reports broken at the new oldest row. Retention and full-history verification are inherently in tension for a pure hash chain.
+- **Retention base anchor.** `DeleteBefore` advances `base_rowid` and `base_prev_hash` before removing old rows, so the retained suffix verifies from the correct seed and routine cleanup does not look like tampering.
 
 ---
 
@@ -290,7 +291,8 @@ dashboard/src/
 | Go single binary | Zero-dependency install. SQLite + web server + CLI in one file |
 | SQLite + WAL | Local/on-prem first. No external database. Immutable append-friendly |
 | `parent_span_id` in schema | Enables causal attribution without a separate graph store |
-| `Broadcaster` interface | Decouples audit sinks — on-chain anchoring adds zero existing code changes |
+| `Broadcaster` interface | Decouples audit sinks — remote/on-chain anchoring can add external evidence without rewriting storage |
+| `chain_meta` head anchor | Detects audit-log tail truncation and records the retained suffix base for retention-safe verification |
 | Patterns engine | Behavioral fingerprinting needed for compliance reports, not just debugging |
 | Python zero-deps SDK | `pip install observr` just works in any agent environment |
 | Background queue transport | Audit capture must never block the instrumented agent |
