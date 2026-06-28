@@ -86,9 +86,20 @@ type Store struct {
 
 // VerifyEvent is the minimal stored form needed to recompute the audit hash chain.
 type VerifyEvent struct {
+	RowID   int64  `json:"rowid"`
 	ID      string `json:"id"`
 	RawJSON string `json:"raw_json"`
 	Hash    string `json:"hash"`
+}
+
+// ChainMeta is the persisted audit-chain anchor used to detect tail truncation.
+type ChainMeta struct {
+	HeadHash     string
+	Count        int
+	LastID       string
+	BaseRowID    int64
+	BasePrevHash string
+	UpdatedAt    time.Time
 }
 
 func Open(path string) (*Store, error) {
@@ -134,10 +145,13 @@ func (s *Store) Insert(events []Event) error {
 	}
 	defer stmt.Close()
 
-	prevHash, err := loadLastHash(tx)
+	meta, err := loadChainMetaTx(tx)
 	if err != nil {
 		return err
 	}
+	prevHash := meta.HeadHash
+	count := meta.Count
+	lastID := meta.LastID
 
 	for i := range events {
 		e := &events[i]
@@ -164,6 +178,21 @@ func (s *Store) Insert(events []Event) error {
 			return err
 		}
 		prevHash = hash
+		count++
+		lastID = e.ID
+	}
+
+	if len(events) > 0 {
+		if err := upsertChainMetaTx(tx, ChainMeta{
+			HeadHash:     prevHash,
+			Count:        count,
+			LastID:       lastID,
+			BaseRowID:    meta.BaseRowID,
+			BasePrevHash: meta.BasePrevHash,
+			UpdatedAt:    time.Now().UTC(),
+		}); err != nil {
+			return err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -279,7 +308,7 @@ func (s *Store) QueryByTrace(traceID string) ([]Event, error) {
 // an error, iteration stops and that error is propagated to the caller.
 func (s *Store) ForEachVerifyEvent(fn func(VerifyEvent) error) error {
 	rows, err := s.db.Query(`
-		SELECT id, COALESCE(raw_json, ''), COALESCE(hash, '')
+		SELECT rowid, id, COALESCE(raw_json, ''), COALESCE(hash, '')
 		FROM events
 		ORDER BY rowid ASC
 	`)
@@ -290,7 +319,7 @@ func (s *Store) ForEachVerifyEvent(fn func(VerifyEvent) error) error {
 
 	for rows.Next() {
 		var e VerifyEvent
-		if err := rows.Scan(&e.ID, &e.RawJSON, &e.Hash); err != nil {
+		if err := rows.Scan(&e.RowID, &e.ID, &e.RawJSON, &e.Hash); err != nil {
 			return err
 		}
 		if err := fn(e); err != nil {
@@ -298,6 +327,11 @@ func (s *Store) ForEachVerifyEvent(fn func(VerifyEvent) error) error {
 		}
 	}
 	return rows.Err()
+}
+
+// ChainMeta returns the current persisted chain anchor.
+func (s *Store) ChainMeta() (*ChainMeta, error) {
+	return loadChainMetaDB(s.db)
 }
 
 // ── Migration ──────────────────────────────────────────────────────────────
@@ -349,6 +383,16 @@ func (s *Store) migrate() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_patterns_updated_at ON patterns(updated_at);
 		CREATE INDEX IF NOT EXISTS idx_patterns_anomaly    ON patterns(anomaly);
+
+		CREATE TABLE IF NOT EXISTS chain_meta (
+			id             INTEGER PRIMARY KEY CHECK (id = 1),
+			head_hash      TEXT NOT NULL,
+			count          INTEGER NOT NULL,
+			last_id        TEXT NOT NULL,
+			base_rowid     INTEGER NOT NULL,
+			base_prev_hash TEXT NOT NULL,
+			updated_at     TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		return err
@@ -369,6 +413,9 @@ func (s *Store) migrate() error {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("migrate add hash: %w", err)
 		}
+	}
+	if err := s.backfillChainMeta(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -517,18 +564,85 @@ func (s *Store) DeleteStalePatterns(olderThan time.Time) error {
 // DeleteBefore removes events with a timestamp older than t and returns the
 // number of deleted rows.
 func (s *Store) DeleteBefore(t time.Time) (int64, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	meta, err := loadChainMetaTx(tx)
+	if err != nil {
+		return 0, err
+	}
+
+	var baseRowID sql.NullInt64
+	var baseHash sql.NullString
+	var deletedHashed int
+	if err := tx.QueryRow(`
+		SELECT rowid, hash
+		FROM events
+		WHERE datetime(timestamp) < datetime(?)
+		  AND rowid > ?
+		  AND raw_json IS NOT NULL AND raw_json != ''
+		  AND hash IS NOT NULL AND hash != ''
+		ORDER BY rowid DESC
+		LIMIT 1
+	`, t.UTC().Format(time.RFC3339Nano), meta.BaseRowID).Scan(&baseRowID, &baseHash); err != nil {
+		if err != sql.ErrNoRows {
+			return 0, err
+		}
+	}
+	if err := tx.QueryRow(`
+		SELECT COUNT(*)
+		FROM events
+		WHERE datetime(timestamp) < datetime(?)
+		  AND rowid > ?
+		  AND raw_json IS NOT NULL AND raw_json != ''
+		  AND hash IS NOT NULL AND hash != ''
+	`, t.UTC().Format(time.RFC3339Nano), meta.BaseRowID).Scan(&deletedHashed); err != nil {
+		return 0, err
+	}
+
 	// Use datetime() to compare so SQLite parses both sides as timestamps
 	// rather than relying on lexicographic TEXT ordering of RFC3339Nano
 	// strings (which can be unreliable when the fractional-second part
 	// has different widths, e.g. "...00Z" vs "...00.5Z").
-	res, err := s.db.Exec(
+	res, err := tx.Exec(
 		`DELETE FROM events WHERE datetime(timestamp) < datetime(?)`,
 		t.UTC().Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if deletedHashed > 0 && baseRowID.Valid && baseHash.Valid {
+		meta.BaseRowID = baseRowID.Int64
+		meta.BasePrevHash = baseHash.String
+		meta.Count -= deletedHashed
+		if meta.Count < 0 {
+			meta.Count = 0
+		}
+		if meta.Count == 0 {
+			meta.HeadHash = meta.BasePrevHash
+			meta.LastID = ""
+		}
+		meta.UpdatedAt = time.Now().UTC()
+		if err := upsertChainMetaTx(tx, meta); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
 // Vacuum reclaims disk space freed by prior deletions.
@@ -573,22 +687,138 @@ func newID() string {
 	return "evt_" + hex.EncodeToString(b)
 }
 
-func loadLastHash(tx *sql.Tx) (string, error) {
-	var hash sql.NullString
-	err := tx.QueryRow(`
-		SELECT hash
+func (s *Store) backfillChainMeta() error {
+	meta, err := loadChainMetaDB(s.db)
+	if err != nil {
+		return err
+	}
+	if meta != nil {
+		return nil
+	}
+
+	rows, err := s.db.Query(`
+		SELECT id, COALESCE(raw_json, ''), COALESCE(hash, '')
 		FROM events
-		WHERE hash IS NOT NULL AND hash != ''
-		ORDER BY rowid DESC
-		LIMIT 1
-	`).Scan(&hash)
+		ORDER BY rowid ASC
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	count := 0
+	headHash := ""
+	lastID := ""
+	started := false
+	for rows.Next() {
+		var id, rawJSON, hash string
+		if err := rows.Scan(&id, &rawJSON, &hash); err != nil {
+			return err
+		}
+		isLegacy := rawJSON == "" || hash == ""
+		if !started {
+			if isLegacy {
+				continue
+			}
+			started = true
+		}
+		if isLegacy {
+			break
+		}
+		headHash = hash
+		lastID = id
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if count == 0 {
+		return nil
+	}
+	return upsertChainMetaDB(s.db, ChainMeta{
+		HeadHash:  headHash,
+		Count:     count,
+		LastID:    lastID,
+		UpdatedAt: time.Now().UTC(),
+	})
+}
+
+func loadChainMetaDB(db *sql.DB) (*ChainMeta, error) {
+	return scanChainMeta(db.QueryRow(`
+		SELECT head_hash, count, last_id, base_rowid, base_prev_hash, updated_at
+		FROM chain_meta
+		WHERE id = 1
+	`))
+}
+
+func loadChainMetaTx(tx *sql.Tx) (ChainMeta, error) {
+	meta, err := scanChainMeta(tx.QueryRow(`
+		SELECT head_hash, count, last_id, base_rowid, base_prev_hash, updated_at
+		FROM chain_meta
+		WHERE id = 1
+	`))
+	if err != nil {
+		return ChainMeta{}, err
+	}
+	if meta == nil {
+		return ChainMeta{}, nil
+	}
+	return *meta, nil
+}
+
+type chainMetaRow interface {
+	Scan(dest ...any) error
+}
+
+func scanChainMeta(row chainMetaRow) (*ChainMeta, error) {
+	var meta ChainMeta
+	var updatedAt string
+	err := row.Scan(&meta.HeadHash, &meta.Count, &meta.LastID, &meta.BaseRowID, &meta.BasePrevHash, &updatedAt)
 	if err == sql.ErrNoRows {
-		return "", nil
+		return nil, nil
 	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return hash.String, nil
+	if updatedAt != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse chain_meta updated_at %q: %w", updatedAt, err)
+		}
+		meta.UpdatedAt = parsed
+	}
+	return &meta, nil
+}
+
+func upsertChainMetaDB(db *sql.DB, meta ChainMeta) error {
+	_, err := db.Exec(chainMetaUpsertSQL(),
+		meta.HeadHash, meta.Count, meta.LastID, meta.BaseRowID, meta.BasePrevHash,
+		meta.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	return err
+}
+
+func upsertChainMetaTx(tx *sql.Tx, meta ChainMeta) error {
+	_, err := tx.Exec(chainMetaUpsertSQL(),
+		meta.HeadHash, meta.Count, meta.LastID, meta.BaseRowID, meta.BasePrevHash,
+		meta.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	return err
+}
+
+func chainMetaUpsertSQL() string {
+	return `
+		INSERT INTO chain_meta
+		  (id, head_hash, count, last_id, base_rowid, base_prev_hash, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			head_hash=excluded.head_hash,
+			count=excluded.count,
+			last_id=excluded.last_id,
+			base_rowid=excluded.base_rowid,
+			base_prev_hash=excluded.base_prev_hash,
+			updated_at=excluded.updated_at
+	`
 }
 
 func hashEvent(rawJSON, prevHash string) string {

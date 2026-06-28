@@ -1,11 +1,14 @@
 package verify_test
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/ydking0911/observr/server/internal/storage"
 	"github.com/ydking0911/observr/server/internal/verify"
@@ -27,6 +30,9 @@ func TestHandlerReportsOKForValidChain(t *testing.T) {
 	if result.BrokenAt != nil {
 		t.Fatalf("BrokenAt = %v, want nil", *result.BrokenAt)
 	}
+	if result.Detail != nil {
+		t.Fatalf("Detail = %v, want nil", *result.Detail)
+	}
 }
 
 func TestHandlerReportsFirstTamperedRow(t *testing.T) {
@@ -45,6 +51,9 @@ func TestHandlerReportsFirstTamperedRow(t *testing.T) {
 	if result.BrokenAt == nil || *result.BrokenAt != "evt_b" {
 		t.Fatalf("BrokenAt = %v, want evt_b", result.BrokenAt)
 	}
+	if result.Detail == nil || *result.Detail != verify.DetailBrokenLink {
+		t.Fatalf("Detail = %v, want broken_link", result.Detail)
+	}
 }
 
 func TestHandlerReportsDeletedMiddleRow(t *testing.T) {
@@ -61,6 +70,9 @@ func TestHandlerReportsDeletedMiddleRow(t *testing.T) {
 	}
 	if result.BrokenAt == nil || *result.BrokenAt != "evt_c" {
 		t.Fatalf("BrokenAt = %v, want evt_c", result.BrokenAt)
+	}
+	if result.Detail == nil || *result.Detail != verify.DetailBrokenLink {
+		t.Fatalf("Detail = %v, want broken_link", result.Detail)
 	}
 }
 
@@ -87,6 +99,9 @@ func TestHandlerSkipsLeadingLegacyRowsAndVerifiesSuffix(t *testing.T) {
 	if result.BrokenAt != nil {
 		t.Fatalf("BrokenAt = %v, want nil", *result.BrokenAt)
 	}
+	if result.Detail != nil {
+		t.Fatalf("Detail = %v, want nil", *result.Detail)
+	}
 }
 
 // A blank row appearing *after* hashed rows means a previously-hashed event was
@@ -103,6 +118,9 @@ func TestHandlerReportsBlankRowAfterHashedRows(t *testing.T) {
 	}
 	if result.BrokenAt == nil || *result.BrokenAt != "evt_b" {
 		t.Fatalf("BrokenAt = %v, want evt_b", result.BrokenAt)
+	}
+	if result.Detail == nil || *result.Detail != verify.DetailBrokenLink {
+		t.Fatalf("Detail = %v, want broken_link", result.Detail)
 	}
 }
 
@@ -133,6 +151,102 @@ func TestHandlerReportsOKForLegacyOnlyDB(t *testing.T) {
 	}
 }
 
+func TestHandlerReportsTailTruncatedFromPersistedMeta(t *testing.T) {
+	rows := validRows()
+	s := fakeLoader{
+		events: rows[:2],
+		meta: &storage.ChainMeta{
+			HeadHash: rows[2].Hash,
+			Count:    3,
+			LastID:   "evt_c",
+		},
+	}
+
+	result := getVerify(t, s)
+	if result.OK {
+		t.Fatalf("expected tail-truncated response, got %+v", result)
+	}
+	if result.Checked != 2 {
+		t.Fatalf("Checked = %d, want 2", result.Checked)
+	}
+	if result.BrokenAt != nil {
+		t.Fatalf("BrokenAt = %v, want nil", *result.BrokenAt)
+	}
+	if result.Detail == nil || *result.Detail != verify.DetailTailTruncated {
+		t.Fatalf("Detail = %v, want tail_truncated", result.Detail)
+	}
+}
+
+func TestHandlerReportsTailTruncatedAfterDirectLatestRowDelete(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "observr-*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := storage.Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Insert([]storage.Event{
+		{ID: "evt_a", Service: "svc", Timestamp: time.Unix(10, 0).UTC(), Type: "log", Level: "info", Message: "first"},
+		{ID: "evt_b", Service: "svc", Timestamp: time.Unix(20, 0).UTC(), Type: "log", Level: "info", Message: "second"},
+		{ID: "evt_c", Service: "svc", Timestamp: time.Unix(30, 0).UTC(), Type: "log", Level: "info", Message: "third"},
+	}); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	db, err := sql.Open("sqlite3", f.Name()+"?_journal=WAL&_timeout=5000")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`DELETE FROM events WHERE id = ?`, "evt_c"); err != nil {
+		t.Fatalf("delete latest row: %v", err)
+	}
+
+	result := getVerify(t, s)
+	if result.OK {
+		t.Fatalf("expected tail-truncated response, got %+v", result)
+	}
+	if result.Checked != 2 {
+		t.Fatalf("Checked = %d, want 2", result.Checked)
+	}
+	if result.BrokenAt != nil {
+		t.Fatalf("BrokenAt = %v, want nil", *result.BrokenAt)
+	}
+	if result.Detail == nil || *result.Detail != verify.DetailTailTruncated {
+		t.Fatalf("Detail = %v, want tail_truncated", result.Detail)
+	}
+}
+
+func TestHandlerVerifiesRetainedSuffixFromBaseAnchor(t *testing.T) {
+	rows := validRows()
+	s := fakeLoader{
+		events: rows[1:],
+		meta: &storage.ChainMeta{
+			HeadHash:     rows[2].Hash,
+			Count:        2,
+			LastID:       "evt_c",
+			BaseRowID:    rows[0].RowID,
+			BasePrevHash: rows[0].Hash,
+		},
+	}
+
+	result := getVerify(t, s)
+	if !result.OK {
+		t.Fatalf("expected retained suffix to verify, got %+v", result)
+	}
+	if result.Checked != 2 {
+		t.Fatalf("Checked = %d, want 2", result.Checked)
+	}
+	if result.Detail != nil {
+		t.Fatalf("Detail = %v, want nil", *result.Detail)
+	}
+}
+
 func TestHandlerReturns500OnLoaderError(t *testing.T) {
 	s := fakeLoader{err: errors.New("disk gone")}
 
@@ -144,7 +258,12 @@ func TestHandlerReturns500OnLoaderError(t *testing.T) {
 	}
 }
 
-func getVerify(t *testing.T, s fakeLoader) verify.Result {
+type testLoader interface {
+	ForEachVerifyEvent(fn func(storage.VerifyEvent) error) error
+	ChainMeta() (*storage.ChainMeta, error)
+}
+
+func getVerify(t *testing.T, s testLoader) verify.Result {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/verify", nil)
@@ -161,6 +280,7 @@ func getVerify(t *testing.T, s fakeLoader) verify.Result {
 
 type fakeLoader struct {
 	events []storage.VerifyEvent
+	meta   *storage.ChainMeta
 	err    error
 }
 
@@ -176,6 +296,10 @@ func (f fakeLoader) ForEachVerifyEvent(fn func(storage.VerifyEvent) error) error
 	return nil
 }
 
+func (f fakeLoader) ChainMeta() (*storage.ChainMeta, error) {
+	return f.meta, nil
+}
+
 func validRows() []storage.VerifyEvent {
 	rawA := `{"id":"evt_a","message":"first"}`
 	hashA := storage.HashForVerify(rawA, "")
@@ -184,8 +308,8 @@ func validRows() []storage.VerifyEvent {
 	rawC := `{"id":"evt_c","message":"third"}`
 	hashC := storage.HashForVerify(rawC, hashB)
 	return []storage.VerifyEvent{
-		{ID: "evt_a", RawJSON: rawA, Hash: hashA},
-		{ID: "evt_b", RawJSON: rawB, Hash: hashB},
-		{ID: "evt_c", RawJSON: rawC, Hash: hashC},
+		{RowID: 1, ID: "evt_a", RawJSON: rawA, Hash: hashA},
+		{RowID: 2, ID: "evt_b", RawJSON: rawB, Hash: hashB},
+		{RowID: 3, ID: "evt_c", RawJSON: rawC, Hash: hashC},
 	}
 }

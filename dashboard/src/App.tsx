@@ -88,13 +88,14 @@ function exportEvents(events: ObservrEvent[], format: "json" | "csv") {
 type Tab = "events" | "patterns";
 type PatternView = "cards" | "table";
 type PatternGroupBy = "tool" | "intent" | "model" | "";
-type ChainStatus = "loading" | "ok" | "broken" | "unverified" | "unknown";
+type ChainStatus = "loading" | "ok" | "broken" | "truncated" | "unverified" | "unknown";
 
 interface VerifyResult {
   ok: boolean;
   checked: number;
   skipped: number;
   broken_at: string | null;
+  detail: "broken_link" | "tail_truncated" | null;
 }
 
 const SINCE_OPTIONS = ["15m", "1h", "6h", "24h"];
@@ -143,7 +144,10 @@ export default function App() {
         return res.json() as Promise<VerifyResult>;
       })
       .then((result) => {
-        if (!result.ok) { setChainStatus("broken"); return; }
+        if (!result.ok) {
+          setChainStatus(result.detail === "tail_truncated" ? "truncated" : "broken");
+          return;
+        }
         // ok with no verified rows means the DB holds only legacy (pre-hash)
         // events — nothing to vouch for, so don't claim a verified chain.
         setChainStatus(result.checked === 0 ? "unverified" : "ok");
@@ -156,6 +160,8 @@ export default function App() {
 
   const chainLabel = chainStatus === "ok"
     ? "chain ✓"
+    : chainStatus === "truncated"
+      ? "chain tail"
     : chainStatus === "broken"
       ? "chain ✗"
       : chainStatus === "loading"
@@ -163,18 +169,24 @@ export default function App() {
         : chainStatus === "unverified"
           ? "chain –"
           : "chain ?";
-  const chainTitle = chainStatus === "broken"
+  const chainTitle = chainStatus === "truncated"
+    ? "Audit hash chain tail was truncated"
+    : chainStatus === "broken"
     ? "Audit hash chain is broken"
     : chainStatus === "unverified"
       ? "No hashed events yet — legacy rows are unverifiable"
       : "Audit hash chain status";
   const chainColor = chainStatus === "ok"
     ? "oklch(72% 0.18 145)"
+    : chainStatus === "truncated"
+      ? "oklch(78% 0.16 72)"
     : chainStatus === "broken"
       ? "oklch(68% 0.20 28)"
       : "oklch(78% 0.04 250)";
   const chainBg = chainStatus === "ok"
     ? "oklch(45% 0.14 145 / 0.22)"
+    : chainStatus === "truncated"
+      ? "oklch(50% 0.14 72 / 0.24)"
     : chainStatus === "broken"
       ? "oklch(45% 0.17 28 / 0.24)"
       : "oklch(55% 0.04 250 / 0.20)";

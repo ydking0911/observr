@@ -127,7 +127,7 @@ All events are stored locally in SQLite (WAL mode) with full timestamps, service
 
 Queryable by: level · service · trace ID · time range · HTTP path
 
-Verify integrity with `GET /verify`. The dashboard header shows `chain ✓` when the stored chain is intact and `chain ✗` when an older event was modified or deleted.
+Verify integrity with `GET /verify`. The dashboard header shows `chain ✓` when the stored chain is intact, `chain ✗` when an older event was modified or deleted, and a distinct truncation state when the persisted head anchor no longer matches the retained rows.
 
 </details>
 
@@ -231,24 +231,23 @@ curl http://localhost:7676/verify
 ```
 
 ```json
-{ "ok": true, "checked": 1042, "skipped": 0, "broken_at": null }
+{ "ok": true, "checked": 1042, "skipped": 0, "broken_at": null, "detail": null }
 ```
 
-If the chain is broken, `broken_at` is the first event ID whose stored hash no longer matches:
+If the chain is broken, `detail` explains the failure. For an in-place edit or middle deletion, `broken_at` is the first event ID whose stored hash no longer matches:
 
 ```json
-{ "ok": false, "checked": 204, "skipped": 0, "broken_at": "evt_abc123" }
+{ "ok": false, "checked": 204, "skipped": 0, "broken_at": "evt_abc123", "detail": "broken_link" }
 ```
 
-`skipped` counts leading **legacy rows** written before this feature existed. Upgrading an existing database in place is safe: those rows have no stored hash, so they are reported as unverifiable (`skipped`) rather than broken, and verification continues from the first hashed event.
+`skipped` counts leading **legacy rows** written before this feature existed. Upgrading an existing database in place is safe: those rows have no stored hash, so they are reported as unverifiable (`skipped`) rather than broken, and verification continues from the first hashed event. Existing hashed databases are backfilled with a single persisted head anchor (`head_hash`, count, last ID, and retention base) so future verification can detect a shortened tail.
 
 **What it protects against, and what it does not.** This is a local, unkeyed hash chain — not a blockchain. It is honest about its limits:
 
-- **Detects** in-place edits and deletion of events from the middle of the log.
-- **Does not detect tail truncation.** Deleting the most recent N events leaves a shorter but internally consistent chain, so `ok` stays `true`. Closing this gap requires an external head anchor (planned).
+- **Detects** in-place edits, deletion of events from the middle of the log, and tail truncation where the newest rows were removed without advancing the persisted head anchor. In the tail case, `/verify` returns `ok: false`, `broken_at: null`, and `detail: "tail_truncated"`.
 - **Does not resist an attacker with write access to the database file.** Because the hash is unkeyed, anyone who can edit a row can recompute every following hash and pass verification. Tamper-evidence holds only against actors who cannot recompute the chain (e.g. accidental corruption, a process without the verification logic, or read-only-then-tampered exports). A keyed (HMAC) or externally anchored variant is future work.
 - **No distributed consensus.** Single-node tamper evidence only.
-- **Retention interaction.** Retention cleanup deletes the oldest rows; once the genesis events are gone, the surviving prefix no longer chains from the empty seed and `/verify` reports broken for the new oldest row.
+- **Retention interaction.** Retention cleanup advances the retained suffix base anchor, so normal `DeleteBefore` cleanup does not create a false broken-chain report. Direct database edits outside the store can still be reported as tampering.
 
 ---
 
