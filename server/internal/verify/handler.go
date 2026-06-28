@@ -14,6 +14,18 @@ type loader interface {
 	ForEachVerifyEvent(fn func(storage.VerifyEvent) error) error
 }
 
+type chainMetaLoader interface {
+	ChainMeta() (*storage.ChainMeta, error)
+}
+
+// Detail identifies the class of integrity failure, when one is known.
+type Detail string
+
+const (
+	DetailBrokenLink    Detail = "broken_link"
+	DetailTailTruncated Detail = "tail_truncated"
+)
+
 // Result is the JSON response returned by GET /verify.
 //
 // Checked counts hashed events that were successfully verified. Skipped counts
@@ -25,6 +37,7 @@ type Result struct {
 	Checked  int     `json:"checked"`
 	Skipped  int     `json:"skipped"`
 	BrokenAt *string `json:"broken_at"`
+	Detail   *Detail `json:"detail"`
 }
 
 // NewHandler returns an HTTP handler that verifies the stored audit hash chain.
@@ -58,9 +71,25 @@ func Check(s loader) (Result, error) {
 		skipped  int
 		started  bool
 		broken   *string
+		meta     *storage.ChainMeta
 	)
 
+	if metaLoader, ok := s.(chainMetaLoader); ok {
+		var err error
+		meta, err = metaLoader.ChainMeta()
+		if err != nil {
+			return Result{}, fmt.Errorf("load chain meta: %w", err)
+		}
+		if meta != nil {
+			prevHash = meta.BasePrevHash
+			started = meta.BasePrevHash != ""
+		}
+	}
+
 	err := s.ForEachVerifyEvent(func(event storage.VerifyEvent) error {
+		if meta != nil && event.RowID <= meta.BaseRowID {
+			return nil
+		}
 		isLegacy := event.RawJSON == "" || event.Hash == ""
 
 		if !started {
@@ -89,7 +118,18 @@ func Check(s loader) (Result, error) {
 	}
 
 	if broken != nil {
-		return Result{OK: false, Checked: checked, Skipped: skipped, BrokenAt: broken}, nil
+		detail := DetailBrokenLink
+		return Result{OK: false, Checked: checked, Skipped: skipped, BrokenAt: broken, Detail: &detail}, nil
 	}
-	return Result{OK: true, Checked: checked, Skipped: skipped, BrokenAt: nil}, nil
+	if meta != nil {
+		if checked < meta.Count {
+			detail := DetailTailTruncated
+			return Result{OK: false, Checked: checked, Skipped: skipped, BrokenAt: nil, Detail: &detail}, nil
+		}
+		if checked != meta.Count || (checked > 0 && prevHash != meta.HeadHash) {
+			detail := DetailBrokenLink
+			return Result{OK: false, Checked: checked, Skipped: skipped, BrokenAt: nil, Detail: &detail}, nil
+		}
+	}
+	return Result{OK: true, Checked: checked, Skipped: skipped, BrokenAt: nil, Detail: nil}, nil
 }

@@ -67,6 +67,23 @@ func TestInsertStoresHashChainRowsForVerify(t *testing.T) {
 	if rows[1].Hash == hashEvent(rows[1].RawJSON, "") {
 		t.Fatal("second row hash did not include previous hash")
 	}
+
+	meta, err := s.ChainMeta()
+	if err != nil {
+		t.Fatalf("ChainMeta: %v", err)
+	}
+	if meta == nil {
+		t.Fatal("expected chain metadata")
+	}
+	if meta.Count != 2 {
+		t.Fatalf("meta.Count = %d, want 2", meta.Count)
+	}
+	if meta.HeadHash != rows[1].Hash {
+		t.Fatalf("meta.HeadHash = %q, want %q", meta.HeadHash, rows[1].Hash)
+	}
+	if meta.LastID != "evt_b" {
+		t.Fatalf("meta.LastID = %q, want evt_b", meta.LastID)
+	}
 }
 
 func TestForEachVerifyEventExposesLegacyRowsAsEmpty(t *testing.T) {
@@ -142,5 +159,100 @@ func TestConcurrentInsertsProduceValidChain(t *testing.T) {
 			t.Fatalf("row %d (%s) breaks the chain", i, row.ID)
 		}
 		prev = row.Hash
+	}
+
+	meta, err := s.ChainMeta()
+	if err != nil {
+		t.Fatalf("ChainMeta: %v", err)
+	}
+	if meta == nil || meta.Count != goroutines*perGoroutine {
+		t.Fatalf("meta.Count = %+v, want %d", meta, goroutines*perGoroutine)
+	}
+}
+
+func TestDeleteBeforeAdvancesChainBaseAnchor(t *testing.T) {
+	s := newVerifyTestStore(t)
+	events := []Event{
+		{ID: "evt_old", Service: "svc", Timestamp: time.Unix(10, 0).UTC(), Type: "log", Level: "info", Message: "old"},
+		{ID: "evt_keep1", Service: "svc", Timestamp: time.Unix(20, 0).UTC(), Type: "log", Level: "info", Message: "keep1"},
+		{ID: "evt_keep2", Service: "svc", Timestamp: time.Unix(30, 0).UTC(), Type: "log", Level: "info", Message: "keep2"},
+	}
+	if err := s.Insert(events); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	before := collectVerify(t, s)
+
+	deleted, err := s.DeleteBefore(time.Unix(15, 0).UTC())
+	if err != nil {
+		t.Fatalf("DeleteBefore: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+
+	meta, err := s.ChainMeta()
+	if err != nil {
+		t.Fatalf("ChainMeta: %v", err)
+	}
+	if meta == nil {
+		t.Fatal("expected chain metadata")
+	}
+	if meta.BaseRowID != before[0].RowID {
+		t.Fatalf("BaseRowID = %d, want %d", meta.BaseRowID, before[0].RowID)
+	}
+	if meta.BasePrevHash != before[0].Hash {
+		t.Fatalf("BasePrevHash = %q, want %q", meta.BasePrevHash, before[0].Hash)
+	}
+	if meta.Count != 2 {
+		t.Fatalf("Count = %d, want 2", meta.Count)
+	}
+	if meta.HeadHash != before[2].Hash {
+		t.Fatalf("HeadHash = %q, want %q", meta.HeadHash, before[2].Hash)
+	}
+}
+
+func TestOpenBackfillsChainMetaForExistingHashedRows(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "observr-*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []Event{
+		{ID: "evt_a", Service: "svc", Timestamp: time.Unix(10, 0).UTC(), Type: "log", Level: "info", Message: "a"},
+		{ID: "evt_b", Service: "svc", Timestamp: time.Unix(20, 0).UTC(), Type: "log", Level: "info", Message: "b"},
+	}
+	if err := s.Insert(events); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	rows := collectVerify(t, s)
+	if _, err := s.db.Exec(`DELETE FROM chain_meta`); err != nil {
+		t.Fatalf("delete chain_meta: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := Open(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	meta, err := reopened.ChainMeta()
+	if err != nil {
+		t.Fatalf("ChainMeta: %v", err)
+	}
+	if meta == nil {
+		t.Fatal("expected backfilled chain metadata")
+	}
+	if meta.Count != 2 || meta.HeadHash != rows[1].Hash || meta.LastID != "evt_b" {
+		t.Fatalf("unexpected backfilled meta: %+v", meta)
 	}
 }
